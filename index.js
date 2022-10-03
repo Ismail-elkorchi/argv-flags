@@ -1,4 +1,4 @@
-function parseArgs ( targetArgument, argumentType ) {
+function parseFlag ( targetArgument, argumentType ) {
 	const processArguments = process.argv;
 	let argsIndex = [];
 
@@ -38,4 +38,4 @@ function parseArgs ( targetArgument, argumentType ) {
 	}
 }
 
-export { parseArgs };
+export { parseFlag };
