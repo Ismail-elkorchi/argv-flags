@@ -19,7 +19,7 @@ function parseFlag ( targetArgument, argumentType ) {
 
 			for ( const key in flagsIndex ) {
 				if ( flagsIndex[key][0] === targetArgument ) {
-					if ( flagsIndex[key][1] > flagsIndex[flagsIndex.length - 1][1] ) {
+					if ( flagsIndex[key][1] < flagsIndex[flagsIndex.length - 1][1] ) {
 						return processArguments.slice( Number( flagsIndex[key][1] ) + 1, flagsIndex[Number( key ) + 1][1] );
 					} else {
 						return processArguments.slice( Number( flagsIndex[key][1] ) + 1 );
