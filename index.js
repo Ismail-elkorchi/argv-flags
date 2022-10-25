@@ -40,4 +40,4 @@ function parseFlag ( targetArgument, argumentType ) {
 	return false;
 }
 
-export { parseFlag };
+module.exports = parseFlag;
