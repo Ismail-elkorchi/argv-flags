@@ -19,6 +19,16 @@ const count = parseFlag('--count', 'number');
 const items = parseFlag('--items', 'array');
 ```
 
+### Inline values
+
+Flags can be passed as `--flag=value` for string, number, boolean, and array types:
+
+```sh
+--enabled=false
+--count=5
+--items=a b
+```
+
 ### Boolean flags
 
 Boolean flags accept explicit values when provided:
