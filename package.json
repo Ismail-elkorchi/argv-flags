@@ -1,20 +1,35 @@
 {
   "name": "argv-flags",
-  "version": "0.1.1",
-  "description": "",
+  "version": "0.2.0",
+  "description": "Minimal CLI flag parser for strings, booleans, numbers, and arrays.",
   "main": "index.js",
+  "types": "index.d.ts",
+  "files": [
+    "LICENSE",
+    "README.md",
+    "index.js",
+    "index.d.ts"
+  ],
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node --test"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Ismail-elkorchi/argv-flags.git"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "keywords": [
+    "argv",
+    "cli",
+    "flags",
+    "parser"
+  ],
+  "author": "Ismail El Korchi",
+  "license": "MIT",
   "bugs": {
     "url": "https://github.com/Ismail-elkorchi/argv-flags/issues"
   },
-  "homepage": "https://github.com/Ismail-elkorchi/argv-flags#readme"
+  "homepage": "https://github.com/Ismail-elkorchi/argv-flags#readme",
+  "engines": {
+    "node": ">=18"
+  }
 }
