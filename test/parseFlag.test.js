@@ -11,6 +11,11 @@ test( 'string flag returns next value', () => {
 	assert.strictEqual( result, 'dir-archiver' );
 } );
 
+test( 'string flag returns inline value', () => {
+	const result = parseFlag( '--name', 'string', withArgv( [ '--name=dir-archiver' ] ) );
+	assert.strictEqual( result, 'dir-archiver' );
+} );
+
 test( 'string flag returns false when missing', () => {
 	const result = parseFlag( '--missing', 'string', withArgv( [] ) );
 	assert.strictEqual( result, false );
@@ -31,6 +36,11 @@ test( 'array flag returns empty array when no values follow', () => {
 	assert.deepStrictEqual( result, [] );
 } );
 
+test( 'array flag accepts inline value', () => {
+	const result = parseFlag( '--items', 'array', withArgv( [ '--items=a', 'b', '--other' ] ) );
+	assert.deepStrictEqual( result, [ 'a', 'b' ] );
+} );
+
 test( 'boolean flag returns true when present without value', () => {
 	const result = parseFlag( '--flag', 'boolean', withArgv( [ '--flag' ] ) );
 	assert.strictEqual( result, true );
@@ -43,8 +53,20 @@ test( 'boolean flag respects true/false values', () => {
 	assert.strictEqual( falseResult, false );
 } );
 
+test( 'boolean flag respects inline true/false values', () => {
+	const trueResult = parseFlag( '--flag', 'boolean', withArgv( [ '--flag=true' ] ) );
+	const falseResult = parseFlag( '--flag', 'boolean', withArgv( [ '--flag=false' ] ) );
+	assert.strictEqual( trueResult, true );
+	assert.strictEqual( falseResult, false );
+} );
+
 test( 'number flag parses numeric values', () => {
 	const result = parseFlag( '--count', 'number', withArgv( [ '--count', '42' ] ) );
+	assert.strictEqual( result, 42 );
+} );
+
+test( 'number flag parses inline numeric values', () => {
+	const result = parseFlag( '--count', 'number', withArgv( [ '--count=42' ] ) );
 	assert.strictEqual( result, 42 );
 } );
 

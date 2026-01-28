@@ -16,17 +16,41 @@ const normalizeBooleanValue = ( value ) => {
 	return undefined;
 };
 
+const findFlagMatch = ( argv, targetArgument ) => {
+	const directIndex = argv.indexOf( targetArgument );
+	if ( directIndex !== -1 ) {
+		return { index: directIndex };
+	}
+
+	const prefix = `${targetArgument}=`;
+	const inlineIndex = argv.findIndex( ( value ) => typeof value === 'string' && value.startsWith( prefix ) );
+	if ( inlineIndex === -1 ) {
+		return null;
+	}
+
+	return {
+		index: inlineIndex,
+		inlineValue: argv[ inlineIndex ].slice( prefix.length )
+	};
+};
+
 function parseFlag( targetArgument, argumentType, argv = process.argv ) {
 	const processArguments = Array.isArray( argv ) ? argv : process.argv;
-	const targetIndex = processArguments.indexOf( targetArgument );
+	const match = findFlagMatch( processArguments, targetArgument );
 
-	if ( targetIndex === -1 ) {
+	if ( ! match ) {
 		return false;
 	}
 
-	const nextValue = processArguments[ targetIndex + 1 ];
+	const inlineValue = Object.prototype.hasOwnProperty.call( match, 'inlineValue' )
+		? match.inlineValue
+		: undefined;
+	const nextValue = processArguments[ match.index + 1 ];
 
 	if ( argumentType === 'string' ) {
+		if ( typeof inlineValue === 'string' ) {
+			return inlineValue;
+		}
 		if ( typeof nextValue !== 'string' || isLongFlag( nextValue ) ) {
 			return false;
 		}
@@ -35,7 +59,10 @@ function parseFlag( targetArgument, argumentType, argv = process.argv ) {
 
 	if ( argumentType === 'array' ) {
 		const values = [];
-		for ( let i = targetIndex + 1; i < processArguments.length; i++ ) {
+		if ( typeof inlineValue === 'string' && inlineValue.length > 0 ) {
+			values.push( inlineValue );
+		}
+		for ( let i = match.index + 1; i < processArguments.length; i++ ) {
 			const value = processArguments[ i ];
 			if ( isLongFlag( value ) ) {
 				break;
@@ -46,7 +73,7 @@ function parseFlag( targetArgument, argumentType, argv = process.argv ) {
 	}
 
 	if ( argumentType === 'boolean' ) {
-		const normalizedValue = normalizeBooleanValue( nextValue );
+		const normalizedValue = normalizeBooleanValue( typeof inlineValue === 'string' ? inlineValue : nextValue );
 		if ( typeof normalizedValue === 'boolean' ) {
 			return normalizedValue;
 		}
@@ -54,10 +81,11 @@ function parseFlag( targetArgument, argumentType, argv = process.argv ) {
 	}
 
 	if ( argumentType === 'number' ) {
-		if ( typeof nextValue !== 'string' || isLongFlag( nextValue ) ) {
+		const candidate = typeof inlineValue === 'string' ? inlineValue : nextValue;
+		if ( typeof candidate !== 'string' || isLongFlag( candidate ) ) {
 			return false;
 		}
-		const parsed = Number( nextValue );
+		const parsed = Number( candidate );
 		return Number.isNaN( parsed ) ? false : parsed;
 	}
 
