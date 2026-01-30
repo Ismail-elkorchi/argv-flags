@@ -94,15 +94,18 @@ const normalizeBoolean = (value: unknown): boolean | undefined => {
 	return undefined;
 };
 
-const isNumericValue = (value: unknown): value is string => {
+const isNumericValue = (value: unknown): boolean => {
 	if (typeof value !== 'string' || value.length === 0) return false;
 	const parsed = Number(value);
 	return Number.isFinite(parsed);
 };
 
-const cloneDefault = <T extends FlagType>(value: FlagValue<T> | undefined, type: T): FlagValue<T> | undefined => {
+const cloneDefault = (
+	value: FlagValue<FlagType> | undefined,
+	type: FlagType
+): FlagValue<FlagType> | undefined => {
 	if (type === 'array' && Array.isArray(value)) {
-		return [ ...value ] as FlagValue<T>;
+		return value.slice();
 	}
 	return value;
 };
@@ -113,46 +116,95 @@ const splitInlineValue = (token: string): { flag: string; value?: string } => {
 	return { flag: token.slice(0, eqIndex), value: token.slice(eqIndex + 1) };
 };
 
-const validateSchema = <S extends Schema>(schema: S) => {
-	if (!schema || typeof schema !== 'object' || Array.isArray(schema)) {
+const isStringArray = (value: unknown): value is string[] =>
+	Array.isArray(value) && value.every((entry) => typeof entry === 'string');
+
+const normalizeDefaultValue = (
+	key: string,
+	value: unknown,
+	type: FlagType
+): FlagValue<FlagType> | undefined => {
+	if (value === undefined) {
+		return undefined;
+	}
+	switch (type) {
+		case 'string':
+			if (typeof value !== 'string') {
+				throw new TypeError(`Schema entry "${key}" default must be a string.`);
+			}
+			return value;
+		case 'boolean':
+			if (typeof value !== 'boolean') {
+				throw new TypeError(`Schema entry "${key}" default must be a boolean.`);
+			}
+			return value;
+		case 'number':
+			if (typeof value !== 'number' || !Number.isFinite(value)) {
+				throw new TypeError(`Schema entry "${key}" default must be a finite number.`);
+			}
+			return value;
+		case 'array':
+			if (!isStringArray(value)) {
+				throw new TypeError(`Schema entry "${key}" default must be a string array.`);
+			}
+			return value;
+		default: {
+			const exhaustive: never = type;
+			throw new TypeError(`Schema entry "${key}" has invalid type "${String(exhaustive)}".`);
+		}
+	}
+};
+
+const validateSchema = (schema: unknown) => {
+	if (schema === null || typeof schema !== 'object' || Array.isArray(schema)) {
 		throw new TypeError('Schema must be an object.');
 	}
 
-	const flagToKey = new Map<string, keyof S>();
-	const normalized = new Map<keyof S, NormalizedSpec>();
+	const flagToKey = new Map<string, string>();
+	const normalized = new Map<string, NormalizedSpec>();
+	const typedSchema = schema as Record<string, unknown>;
 
-	for (const [rawKey, rawSpec] of Object.entries(schema)) {
-		const key = rawKey as keyof S;
-		const spec = rawSpec as FlagSpec;
-		if (!spec || typeof spec !== 'object') {
-			throw new TypeError(`Schema entry for "${String(key)}" must be an object.`);
+	for (const key of Object.keys(typedSchema)) {
+		const rawSpec = typedSchema[key];
+		if (rawSpec === null || typeof rawSpec !== 'object' || Array.isArray(rawSpec)) {
+			throw new TypeError(`Schema entry for "${key}" must be an object.`);
 		}
-		const type = spec.type;
-		if (!['string', 'boolean', 'number', 'array'].includes(type)) {
-			throw new TypeError(`Schema entry "${String(key)}" has invalid type "${String(type)}".`);
+		const specRecord = rawSpec as Record<string, unknown>;
+		const type = specRecord['type'];
+		if (type !== 'string' && type !== 'boolean' && type !== 'number' && type !== 'array') {
+			throw new TypeError(`Schema entry "${key}" has invalid type.`);
 		}
-		const flagsInput = spec.flags;
+		const flagsInput = specRecord['flags'];
 		if (!Array.isArray(flagsInput) || flagsInput.length === 0) {
-			throw new TypeError(`Schema entry "${String(key)}" must define at least one flag.`);
+			throw new TypeError(`Schema entry "${key}" must define at least one flag.`);
 		}
 		const flags: string[] = [];
 		for (const flag of flagsInput) {
 			if (typeof flag !== 'string' || flag.length < 2 || !flag.startsWith('-')) {
-				throw new TypeError(`Schema entry "${String(key)}" has invalid flag "${String(flag)}".`);
+				throw new TypeError(`Schema entry "${key}" has invalid flag "${String(flag)}".`);
 			}
 			if (flagToKey.has(flag)) {
 				const existing = flagToKey.get(flag);
-				throw new TypeError(`Flag "${flag}" is already assigned to "${String(existing)}".`);
+				throw new TypeError(`Flag "${flag}" is already assigned to "${existing ?? ''}".`);
 			}
 			flagToKey.set(flag, key);
 			flags.push(flag);
 		}
+		const defaultValue = normalizeDefaultValue(key, specRecord['default'], type);
+		const spec: FlagSpec = {
+			type,
+			flags,
+			...(specRecord['required'] === true ? { required: true } : {}),
+			...(specRecord['allowEmpty'] === true ? { allowEmpty: true } : {}),
+			...(specRecord['allowNo'] === false ? { allowNo: false } : {}),
+			...(defaultValue !== undefined ? { default: defaultValue } : {})
+		};
 		const longFlag = flags.find((flag) => flag.startsWith('--'));
 		const normalizedSpec: NormalizedSpec = {
 			...spec,
 			type,
 			flags,
-			...(longFlag ? { longFlag } : {})
+			...(typeof longFlag === 'string' ? { longFlag } : {})
 		};
 		normalized.set(key, normalizedSpec);
 	}
@@ -164,19 +216,19 @@ export const defineSchema = <T extends Schema>(schema: T): T => schema;
 
 export const parseArgs = <T extends Schema>(schema: T, options: ParseOptions = {}): ParseResult<T> => {
 	const { flagToKey, normalized } = validateSchema(schema);
-	const argv = Array.isArray(options.argv) ? options.argv : process.argv.slice(2);
+	const argv = options.argv !== undefined ? [ ...options.argv ] : process.argv.slice(2);
 	const allowUnknown = options.allowUnknown === true;
 	const stopAtDoubleDash = options.stopAtDoubleDash !== false;
 
-	const values = {} as ParsedValues<T>;
-	const present = {} as ParsedPresent<T>;
+	const values: Record<string, FlagValue<FlagType> | undefined> = {};
+	const present: Record<string, boolean> = {};
 	const issues: ParseIssue[] = [];
 	const unknown: string[] = [];
 	const rest: string[] = [];
 
 	for (const [key, spec] of normalized.entries()) {
-		present[key as keyof T] = false as ParsedPresent<T>[keyof T];
-		values[key as keyof T] = cloneDefault(spec.default as FlagValue<FlagType> | undefined, spec.type) as ParsedValues<T>[keyof T];
+		present[key] = false;
+		values[key] = cloneDefault(spec.default, spec.type);
 	}
 
 	const pushIssue = (issue: ParseIssue) => {
@@ -185,6 +237,9 @@ export const parseArgs = <T extends Schema>(schema: T, options: ParseOptions = {
 
 	for (let i = 0; i < argv.length; i += 1) {
 		const token = argv[i];
+		if (token === undefined) {
+			continue;
+		}
 		if (stopAtDoubleDash && token === '--') {
 			rest.push(...argv.slice(i + 1));
 			break;
@@ -199,29 +254,29 @@ export const parseArgs = <T extends Schema>(schema: T, options: ParseOptions = {
 
 		if (flag.startsWith('--no-') && !flagToKey.has(flag)) {
 			const base = `--${flag.slice(5)}`;
-			const baseKey = flagToKey.get(base);
-			if (baseKey) {
-				const baseSpec = normalized.get(baseKey);
-				if (baseSpec?.type === 'boolean' && baseSpec.allowNo !== false) {
-					if (present[baseKey as keyof T]) {
-						pushIssue({
-							code: 'DUPLICATE',
-							severity: 'warning',
-							message: `Duplicate flag ${base}.`,
-							flag: base,
-							key: String(baseKey),
-							index: i
-						});
-					}
-					present[baseKey as keyof T] = true as ParsedPresent<T>[keyof T];
-					values[baseKey as keyof T] = false as ParsedValues<T>[keyof T];
-					continue;
+		const baseKey = flagToKey.get(base);
+		if (baseKey !== undefined) {
+			const baseSpec = normalized.get(baseKey);
+			if (baseSpec?.type === 'boolean' && baseSpec.allowNo !== false) {
+				if (present[baseKey] === true) {
+					pushIssue({
+						code: 'DUPLICATE',
+						severity: 'warning',
+						message: `Duplicate flag ${base}.`,
+						flag: base,
+						key: baseKey,
+						index: i
+					});
 				}
+				present[baseKey] = true;
+				values[baseKey] = false;
+				continue;
 			}
 		}
+	}
 
 		const key = flagToKey.get(flag);
-		if (!key) {
+		if (key === undefined) {
 			if (!allowUnknown) {
 				pushIssue({
 					code: 'UNKNOWN_FLAG',
@@ -237,171 +292,176 @@ export const parseArgs = <T extends Schema>(schema: T, options: ParseOptions = {
 		}
 
 		const spec = normalized.get(key);
-		if (!spec) {
+		if (spec === undefined) {
 			continue;
 		}
 
-		const wasPresent = present[key as keyof T];
+		const wasPresent = present[key] === true;
 		if (wasPresent && spec.type !== 'array') {
 			pushIssue({
 				code: 'DUPLICATE',
 				severity: 'warning',
 				message: `Duplicate flag ${flag}.`,
 				flag,
-				key: String(key),
+				key,
 				index: i
 			});
 		}
-		present[key as keyof T] = true as ParsedPresent<T>[keyof T];
+		present[key] = true;
 
-		if (spec.type === 'boolean') {
-			let raw = inlineValue;
-			let consumedNext = false;
-			if (raw === undefined) {
-				const nextValue = argv[i + 1];
-				const normalizedValue = normalizeBoolean(nextValue);
-				if (normalizedValue !== undefined) {
-					raw = nextValue;
-					consumedNext = true;
+		switch (spec.type) {
+			case 'boolean': {
+				let raw = inlineValue;
+				let consumedNext = false;
+				if (raw === undefined) {
+					const nextValue = argv[i + 1];
+					const normalizedValue = normalizeBoolean(nextValue);
+					if (normalizedValue !== undefined) {
+						raw = nextValue;
+						consumedNext = true;
+					}
 				}
+				if (raw !== undefined) {
+					const normalizedValue = normalizeBoolean(raw);
+					if (normalizedValue === undefined) {
+						pushIssue({
+							code: 'INVALID_VALUE',
+							severity: 'error',
+							message: `Invalid boolean value for ${flag}: ${raw}.`,
+							flag,
+							key,
+							value: raw,
+							index: i
+						});
+					} else {
+						values[key] = normalizedValue;
+						if (consumedNext) {
+							i += 1;
+						}
+					}
+				} else {
+					values[key] = true;
+				}
+				break;
 			}
-			if (raw !== undefined) {
-				const normalizedValue = normalizeBoolean(raw);
-				if (normalizedValue === undefined) {
+			case 'string': {
+				let raw = inlineValue;
+				if (raw === undefined) {
+					const nextValue = argv[i + 1];
+					if (typeof nextValue !== 'string' || isFlagToken(nextValue)) {
+						pushIssue({
+							code: 'MISSING_VALUE',
+							severity: 'error',
+							message: `Missing value for ${flag}.`,
+							flag,
+							key,
+							index: i
+						});
+						break;
+					}
+					raw = nextValue;
+					i += 1;
+				}
+				if (raw.length === 0 && spec.allowEmpty !== true) {
 					pushIssue({
-						code: 'INVALID_VALUE',
+						code: 'EMPTY_VALUE',
 						severity: 'error',
-						message: `Invalid boolean value for ${flag}: ${raw}.`,
+						message: `Empty value not allowed for ${flag}.`,
 						flag,
-						key: String(key),
+						key,
+						index: i
+					});
+					break;
+				}
+				values[key] = raw;
+				break;
+			}
+			case 'number': {
+				let raw = inlineValue;
+				if (raw === undefined) {
+					const nextValue = argv[i + 1];
+					if (typeof nextValue !== 'string' || (!isNumericValue(nextValue) && isFlagToken(nextValue))) {
+						pushIssue({
+							code: 'MISSING_VALUE',
+							severity: 'error',
+							message: `Missing value for ${flag}.`,
+							flag,
+							key,
+							index: i
+						});
+						break;
+					}
+					raw = nextValue;
+					i += 1;
+				}
+					if (!isNumericValue(raw)) {
+						pushIssue({
+							code: 'INVALID_VALUE',
+							severity: 'error',
+						message: `Invalid number value for ${flag}: ${raw}.`,
+						flag,
+						key,
 						value: raw,
 						index: i
 					});
-				} else {
-					values[key as keyof T] = normalizedValue as ParsedValues<T>[keyof T];
-					if (consumedNext) {
-						i += 1;
+						break;
 					}
+				values[key] = Number(raw);
+				break;
+			}
+			case 'array': {
+				const collected: string[] = [];
+				if (inlineValue !== undefined && inlineValue.length > 0) {
+					collected.push(inlineValue);
 				}
-			} else {
-				values[key as keyof T] = true as ParsedValues<T>[keyof T];
-			}
-			continue;
-		}
-
-		if (spec.type === 'string') {
-			let raw = inlineValue;
-			if (raw === undefined) {
-				const nextValue = argv[i + 1];
-				if (typeof nextValue !== 'string' || isFlagToken(nextValue)) {
-					pushIssue({
-						code: 'MISSING_VALUE',
-						severity: 'error',
-						message: `Missing value for ${flag}.`,
-						flag,
-						key: String(key),
-						index: i
-					});
-					continue;
-				}
-				raw = nextValue;
-				i += 1;
-			}
-			if (raw.length === 0 && spec.allowEmpty !== true) {
-				pushIssue({
-					code: 'EMPTY_VALUE',
-					severity: 'error',
-					message: `Empty value not allowed for ${flag}.`,
-					flag,
-					key: String(key),
-					index: i
-				});
-				continue;
-			}
-			values[key as keyof T] = raw as ParsedValues<T>[keyof T];
-			continue;
-		}
-
-		if (spec.type === 'number') {
-			let raw = inlineValue;
-			if (raw === undefined) {
-				const nextValue = argv[i + 1];
-				if (typeof nextValue !== 'string' || (!isNumericValue(nextValue) && isFlagToken(nextValue))) {
-					pushIssue({
-						code: 'MISSING_VALUE',
-						severity: 'error',
-						message: `Missing value for ${flag}.`,
-						flag,
-						key: String(key),
-						index: i
-					});
-					continue;
-				}
-				raw = nextValue;
-				i += 1;
-			}
-			if (!isNumericValue(raw)) {
-				pushIssue({
-					code: 'INVALID_VALUE',
-					severity: 'error',
-					message: `Invalid number value for ${flag}: ${raw}.`,
-					flag,
-					key: String(key),
-					value: raw,
-					index: i
-				});
-				continue;
-			}
-			values[key as keyof T] = Number(raw) as ParsedValues<T>[keyof T];
-			continue;
-		}
-
-		if (spec.type === 'array') {
-			const collected: string[] = [];
-			if (inlineValue !== undefined && inlineValue.length > 0) {
-				collected.push(inlineValue);
-			}
-			let cursor = i + 1;
-			while (cursor < argv.length) {
+				let cursor = i + 1;
+				while (cursor < argv.length) {
 				const nextValue = argv[cursor];
+				if (nextValue === undefined) {
+					cursor += 1;
+					continue;
+				}
 				if (stopAtDoubleDash && nextValue === '--') {
 					break;
 				}
-				if (isFlagToken(nextValue)) {
+					if (isFlagToken(nextValue)) {
+						break;
+					}
+					collected.push(nextValue);
+					cursor += 1;
+				}
+				if (cursor > i + 1) {
+					i = cursor - 1;
+				}
+				if (collected.length === 0 && spec.allowEmpty !== true) {
+					pushIssue({
+						code: 'MISSING_VALUE',
+						severity: 'error',
+						message: `Missing value for ${flag}.`,
+						flag,
+						key,
+						index: i
+					});
 					break;
 				}
-				collected.push(nextValue);
-				cursor += 1;
+				const existing = Array.isArray(values[key]) ? values[key] : [];
+				values[key] = [ ...existing, ...collected ];
+				break;
 			}
-			if (cursor > i + 1) {
-				i = cursor - 1;
-			}
-			if (collected.length === 0 && spec.allowEmpty !== true) {
-				pushIssue({
-					code: 'MISSING_VALUE',
-					severity: 'error',
-					message: `Missing value for ${flag}.`,
-					flag,
-					key: String(key),
-					index: i
-				});
-				continue;
-			}
-			const existing = Array.isArray(values[key as keyof T]) ? (values[key as keyof T] as string[]) : [];
-			values[key as keyof T] = [ ...existing, ...collected ] as ParsedValues<T>[keyof T];
-			continue;
+			default:
+				break;
 		}
 	}
 
 	for (const [key, spec] of normalized.entries()) {
-		if (spec.required && !present[key as keyof T]) {
+		if (spec.required === true && present[key] !== true) {
 			const primaryFlag = spec.flags[0];
 			pushIssue({
 				code: 'REQUIRED',
 				severity: 'error',
 				message: `Missing required flag ${primaryFlag ?? ''}.`,
-				...(primaryFlag ? { flag: primaryFlag } : {}),
-				key: String(key)
+				...(typeof primaryFlag === 'string' ? { flag: primaryFlag } : {}),
+				key
 			});
 		}
 	}
@@ -409,8 +469,8 @@ export const parseArgs = <T extends Schema>(schema: T, options: ParseOptions = {
 	const ok = issues.every((issue) => issue.severity !== 'error');
 
 	return {
-		values,
-		present,
+		values: values as ParsedValues<T>,
+		present: present as ParsedPresent<T>,
 		rest,
 		unknown,
 		issues,
@@ -422,16 +482,22 @@ export default parseArgs;
 
 export const toJsonResult = <T extends Schema>(result: ParseResult<T>): ParseResultJson => {
 	const values: Record<string, JsonFlagValue> = {};
-	for (const [key, value] of Object.entries(result.values as Record<string, unknown>)) {
+	const valueEntries = result.values as Record<string, FlagValue<FlagType> | undefined>;
+	for (const [key, value] of Object.entries(valueEntries)) {
 		if (value === undefined) {
 			values[key] = null;
 			continue;
 		}
 		values[key] = value as JsonFlagValue;
 	}
+	const presentEntries = result.present as Record<string, boolean>;
+	const present: Record<string, boolean> = {};
+	for (const [key, value] of Object.entries(presentEntries)) {
+		present[key] = value;
+	}
 	return {
 		values,
-		present: result.present as Record<string, boolean>,
+		present,
 		rest: [ ...result.rest ],
 		unknown: [ ...result.unknown ],
 		issues: [ ...result.issues ],
