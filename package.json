@@ -9,7 +9,8 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
-    }
+    },
+    "./schema/parse-result.schema.json": "./schema/parse-result.schema.json"
   },
   "files": [
     "CHANGELOG.md",

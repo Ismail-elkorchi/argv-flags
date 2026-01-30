@@ -1,0 +1,127 @@
+[
+  {
+    "name": "basic parse with unknown + rest",
+    "schema": {
+      "src": { "type": "string", "flags": ["--src"], "required": true },
+      "dest": { "type": "string", "flags": ["--dest"], "required": true },
+      "exclude": { "type": "array", "flags": ["--exclude"], "default": [] },
+      "verbose": { "type": "boolean", "flags": ["--verbose"], "default": false },
+      "retries": { "type": "number", "flags": ["--retries"] }
+    },
+    "argv": [
+      "--src",
+      "in",
+      "--dest",
+      "out",
+      "--exclude",
+      "node_modules",
+      "--no-verbose",
+      "--unknown=1",
+      "--",
+      "--literal"
+    ],
+    "options": { "allowUnknown": true },
+    "expect": {
+      "values": {
+        "src": "in",
+        "dest": "out",
+        "exclude": ["node_modules"],
+        "verbose": false,
+        "retries": null
+      },
+      "present": {
+        "src": true,
+        "dest": true,
+        "exclude": true,
+        "verbose": true,
+        "retries": false
+      },
+      "rest": ["--literal"],
+      "unknown": ["--unknown=1"],
+      "issues": [],
+      "ok": true
+    }
+  },
+  {
+    "name": "array defaults are a base, values append",
+    "schema": {
+      "items": { "type": "array", "flags": ["--items"], "default": ["base"] }
+    },
+    "argv": ["--items", "a"],
+    "options": {},
+    "expect": {
+      "values": { "items": ["base", "a"] },
+      "present": { "items": true },
+      "rest": [],
+      "unknown": [],
+      "issues": [],
+      "ok": true
+    }
+  },
+  {
+    "name": "stopAtDoubleDash disabled keeps parsing",
+    "schema": {
+      "name": { "type": "string", "flags": ["--name"] }
+    },
+    "argv": ["--", "--name", "x"],
+    "options": { "stopAtDoubleDash": false, "allowUnknown": true },
+    "expect": {
+      "values": { "name": "x" },
+      "present": { "name": true },
+      "rest": [],
+      "unknown": ["--"],
+      "issues": [],
+      "ok": true
+    }
+  },
+  {
+    "name": "missing value for string flag",
+    "schema": {
+      "name": { "type": "string", "flags": ["--name"] }
+    },
+    "argv": ["--name"],
+    "options": {},
+    "expect": {
+      "values": { "name": null },
+      "present": { "name": true },
+      "rest": [],
+      "unknown": [],
+      "issues": [
+        {
+          "code": "MISSING_VALUE",
+          "severity": "error",
+          "message": "Missing value for --name.",
+          "flag": "--name",
+          "key": "name",
+          "index": 0
+        }
+      ],
+      "ok": false
+    }
+  },
+  {
+    "name": "duplicate warning does not fail ok",
+    "schema": {
+      "name": { "type": "string", "flags": ["--name"] }
+    },
+    "argv": ["--name", "a", "--name", "b"],
+    "options": {},
+    "expect": {
+      "values": { "name": "b" },
+      "present": { "name": true },
+      "rest": [],
+      "unknown": [],
+      "issues": [
+        {
+          "code": "DUPLICATE",
+          "severity": "warning",
+          "message": "Duplicate flag --name.",
+          "flag": "--name",
+          "key": "name",
+          "index": 2
+        }
+      ],
+      "ok": true
+    }
+  }
+]

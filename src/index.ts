@@ -190,13 +190,31 @@ const validateSchema = (schema: unknown) => {
 			flagToKey.set(flag, key);
 			flags.push(flag);
 		}
+		const requiredValue = specRecord['required'];
+		if (requiredValue !== undefined && typeof requiredValue !== 'boolean') {
+			throw new TypeError(`Schema entry "${key}" required must be a boolean.`);
+		}
+		const allowNoValue = specRecord['allowNo'];
+		if (allowNoValue !== undefined && typeof allowNoValue !== 'boolean') {
+			throw new TypeError(`Schema entry "${key}" allowNo must be a boolean.`);
+		}
+		if (allowNoValue !== undefined && type !== 'boolean') {
+			throw new TypeError(`Schema entry "${key}" allowNo is only valid for boolean types.`);
+		}
+		const allowEmptyValue = specRecord['allowEmpty'];
+		if (allowEmptyValue !== undefined && typeof allowEmptyValue !== 'boolean') {
+			throw new TypeError(`Schema entry "${key}" allowEmpty must be a boolean.`);
+		}
+		if (allowEmptyValue !== undefined && type !== 'string' && type !== 'array') {
+			throw new TypeError(`Schema entry "${key}" allowEmpty is only valid for string or array types.`);
+		}
 		const defaultValue = normalizeDefaultValue(key, specRecord['default'], type);
 		const spec: FlagSpec = {
 			type,
 			flags,
-			...(specRecord['required'] === true ? { required: true } : {}),
-			...(specRecord['allowEmpty'] === true ? { allowEmpty: true } : {}),
-			...(specRecord['allowNo'] === false ? { allowNo: false } : {}),
+			...(requiredValue === true ? { required: true } : {}),
+			...(allowEmptyValue === true ? { allowEmpty: true } : {}),
+			...(allowNoValue === false ? { allowNo: false } : {}),
 			...(defaultValue !== undefined ? { default: defaultValue } : {})
 		};
 		const longFlag = flags.find((flag) => flag.startsWith('--'));

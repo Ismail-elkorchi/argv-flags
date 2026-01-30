@@ -82,6 +82,26 @@ test('empty string is rejected unless allowEmpty is true', () => {
   assert.ok(result.issues.some((issue) => issue.code === 'EMPTY_VALUE'));
 });
 
+test('allowEmpty for array accepts explicit empty inline values', () => {
+  const schema = defineSchema({
+    items: { type: 'array', flags: ['--items'], allowEmpty: true, default: ['seed'] }
+  });
+  const result = parseArgs(schema, { argv: ['--items='] });
+  assert.strictEqual(result.ok, true);
+  assert.deepStrictEqual(result.values.items, ['seed']);
+  assert.strictEqual(result.present.items, true);
+});
+
+test('allowEmpty for array yields empty array when no default exists', () => {
+  const schema = defineSchema({
+    items: { type: 'array', flags: ['--items'], allowEmpty: true }
+  });
+  const result = parseArgs(schema, { argv: ['--items'] });
+  assert.strictEqual(result.ok, true);
+  assert.deepStrictEqual(result.values.items, []);
+  assert.strictEqual(result.present.items, true);
+});
+
 test('ok is false when any error exists (even with warnings)', () => {
   const schema = defineSchema({
     flag: { type: 'boolean', flags: ['--flag'] }
@@ -124,5 +144,32 @@ test('invalid schema definitions throw early', () => {
         })
       ),
     /default must be a finite number/u
+  );
+  assert.throws(
+    () =>
+      parseArgs(
+        defineSchema({
+          flag: { type: 'string', flags: ['--flag'], allowNo: true }
+        })
+      ),
+    /allowNo is only valid for boolean types/u
+  );
+  assert.throws(
+    () =>
+      parseArgs(
+        defineSchema({
+          flag: { type: 'boolean', flags: ['--flag'], allowEmpty: false }
+        })
+      ),
+    /allowEmpty is only valid for string or array types/u
+  );
+  assert.throws(
+    () =>
+      parseArgs(
+        defineSchema({
+          flag: { type: 'string', flags: ['--flag'], required: 'yes' }
+        })
+      ),
+    /required must be a boolean/u
   );
 });

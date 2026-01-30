@@ -56,6 +56,7 @@ interface FlagSpec<T extends FlagType = FlagType> {
 Notes:
 - `flags` must include at least one flag token (`-x` or `--long`).
 - `default` is cloned for arrays to avoid shared references.
+- Array defaults act as a base; explicit array values append rather than replace.
 - `allowNo` enables `--no-<flag>` for boolean specs (default: `true`).
 - `allowEmpty` allows empty string/array values (default: `false`).
 

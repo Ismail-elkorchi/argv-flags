@@ -17,7 +17,7 @@ export default [
   {
     files: ['**/*.{js,ts}'],
     languageOptions: {
-      ecmaVersion: 2024,
+      ecmaVersion: 'latest',
       sourceType: 'module',
       globals: {
         ...globals.node
