@@ -1,17 +1,25 @@
 {
   "name": "argv-flags",
-  "version": "0.2.1",
-  "description": "Minimal CLI flag parser for strings, booleans, numbers, and arrays.",
-  "main": "index.js",
-  "types": "index.d.ts",
+  "version": "1.0.0",
+  "description": "Schema-based CLI flag parser for Node.js.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
   "files": [
+    "CHANGELOG.md",
     "LICENSE",
     "README.md",
-    "index.js",
-    "index.d.ts"
+    "dist"
   ],
   "scripts": {
-    "test": "node --test"
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --test"
   },
   "repository": {
     "type": "git",
@@ -30,6 +38,10 @@
   },
   "homepage": "https://github.com/Ismail-elkorchi/argv-flags#readme",
   "engines": {
-    "node": ">=18"
+    "node": ">=24"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.5.4"
   }
 }
