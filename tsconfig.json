@@ -25,6 +25,7 @@
     "useDefineForClassFields": true,
     "verbatimModuleSyntax": true,
     "noEmitOnError": true,
+    "noUncheckedSideEffectImports": true,
     "skipLibCheck": false
   },
   "include": ["src/**/*.ts"]

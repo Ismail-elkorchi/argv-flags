@@ -254,26 +254,26 @@ export const parseArgs = <T extends Schema>(schema: T, options: ParseOptions = {
 
 		if (flag.startsWith('--no-') && !flagToKey.has(flag)) {
 			const base = `--${flag.slice(5)}`;
-		const baseKey = flagToKey.get(base);
-		if (baseKey !== undefined) {
-			const baseSpec = normalized.get(baseKey);
-			if (baseSpec?.type === 'boolean' && baseSpec.allowNo !== false) {
-				if (present[baseKey] === true) {
-					pushIssue({
-						code: 'DUPLICATE',
-						severity: 'warning',
-						message: `Duplicate flag ${base}.`,
-						flag: base,
-						key: baseKey,
-						index: i
-					});
+			const baseKey = flagToKey.get(base);
+			if (baseKey !== undefined) {
+				const baseSpec = normalized.get(baseKey);
+				if (baseSpec?.type === 'boolean' && baseSpec.allowNo !== false) {
+					if (present[baseKey] === true) {
+						pushIssue({
+							code: 'DUPLICATE',
+							severity: 'warning',
+							message: `Duplicate flag ${base}.`,
+							flag: base,
+							key: baseKey,
+							index: i
+						});
+					}
+					present[baseKey] = true;
+					values[baseKey] = false;
+					continue;
 				}
-				present[baseKey] = true;
-				values[baseKey] = false;
-				continue;
 			}
 		}
-	}
 
 		const key = flagToKey.get(flag);
 		if (key === undefined) {
@@ -394,18 +394,18 @@ export const parseArgs = <T extends Schema>(schema: T, options: ParseOptions = {
 					raw = nextValue;
 					i += 1;
 				}
-					if (!isNumericValue(raw)) {
-						pushIssue({
-							code: 'INVALID_VALUE',
-							severity: 'error',
+				if (!isNumericValue(raw)) {
+					pushIssue({
+						code: 'INVALID_VALUE',
+						severity: 'error',
 						message: `Invalid number value for ${flag}: ${raw}.`,
 						flag,
 						key,
 						value: raw,
 						index: i
 					});
-						break;
-					}
+					break;
+				}
 				values[key] = Number(raw);
 				break;
 			}
@@ -416,14 +416,14 @@ export const parseArgs = <T extends Schema>(schema: T, options: ParseOptions = {
 				}
 				let cursor = i + 1;
 				while (cursor < argv.length) {
-				const nextValue = argv[cursor];
-				if (nextValue === undefined) {
-					cursor += 1;
-					continue;
-				}
-				if (stopAtDoubleDash && nextValue === '--') {
-					break;
-				}
+					const nextValue = argv[cursor];
+					if (nextValue === undefined) {
+						cursor += 1;
+						continue;
+					}
+					if (stopAtDoubleDash && nextValue === '--') {
+						break;
+					}
 					if (isFlagToken(nextValue)) {
 						break;
 					}
