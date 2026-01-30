@@ -67,6 +67,17 @@ export interface ParseResult<S extends Schema> {
 	ok: boolean;
 }
 
+export type JsonFlagValue = string | number | boolean | string[] | null;
+
+export interface ParseResultJson {
+	values: Record<string, JsonFlagValue>;
+	present: Record<string, boolean>;
+	rest: string[];
+	unknown: string[];
+	issues: ParseIssue[];
+	ok: boolean;
+}
+
 interface NormalizedSpec extends FlagSpec {
 	flags: string[];
 	longFlag?: string;
@@ -408,3 +419,22 @@ export const parseArgs = <T extends Schema>(schema: T, options: ParseOptions = {
 };
 
 export default parseArgs;
+
+export const toJsonResult = <T extends Schema>(result: ParseResult<T>): ParseResultJson => {
+	const values: Record<string, JsonFlagValue> = {};
+	for (const [key, value] of Object.entries(result.values as Record<string, unknown>)) {
+		if (value === undefined) {
+			values[key] = null;
+			continue;
+		}
+		values[key] = value as JsonFlagValue;
+	}
+	return {
+		values,
+		present: result.present as Record<string, boolean>,
+		rest: [ ...result.rest ],
+		unknown: [ ...result.unknown ],
+		issues: [ ...result.issues ],
+		ok: result.ok
+	};
+};

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { defineSchema, parseArgs } from '../dist/index.js';
+import { defineSchema, parseArgs, toJsonResult } from '../dist/index.js';
 
 const schema = defineSchema({
   name: { type: 'string', flags: ['--name'] },
@@ -96,4 +96,44 @@ test('-- stops flag parsing and preserves rest', () => {
   const result = parseArgs(schema, { argv: withArgv(['--required', 'ok', '--', '--name', 'x']) });
   assert.deepStrictEqual(result.rest, ['--name', 'x']);
   assert.strictEqual(result.values.name, undefined);
+});
+
+test('duplicate non-array flags produce warnings', () => {
+  const result = parseArgs(schema, { argv: withArgv(['--name', 'a', '--name', 'b', '--required', 'ok']) });
+  assert.strictEqual(result.ok, true);
+  assert.ok(result.issues.some((issue) => issue.code === 'DUPLICATE'));
+  assert.strictEqual(result.values.name, 'b');
+});
+
+test('array flags append across occurrences', () => {
+  const result = parseArgs(schema, { argv: withArgv(['--items', 'a', '--items', 'b', '--required', 'ok']) });
+  assert.deepStrictEqual(result.values.items, ['a', 'b']);
+});
+
+test('allowNo can be disabled', () => {
+  const customSchema = defineSchema({
+    flag: { type: 'boolean', flags: ['--flag'], allowNo: false },
+    required: { type: 'string', flags: ['--required'], required: true }
+  });
+  const result = parseArgs(customSchema, { argv: withArgv(['--no-flag', '--required', 'ok']), allowUnknown: true });
+  assert.strictEqual(result.ok, true);
+  assert.deepStrictEqual(result.unknown, ['--no-flag']);
+});
+
+test('allowEmpty permits empty string and array', () => {
+  const customSchema = defineSchema({
+    name: { type: 'string', flags: ['--name'], allowEmpty: true },
+    items: { type: 'array', flags: ['--items'], allowEmpty: true },
+    required: { type: 'string', flags: ['--required'], required: true }
+  });
+  const result = parseArgs(customSchema, { argv: withArgv(['--name', '', '--items', '--required', 'ok']) });
+  assert.strictEqual(result.ok, true);
+  assert.strictEqual(result.values.name, '');
+  assert.deepStrictEqual(result.values.items, []);
+});
+
+test('toJsonResult converts undefined to null', () => {
+  const result = parseArgs(schema, { argv: withArgv(['--required', 'ok']) });
+  const json = toJsonResult(result);
+  assert.strictEqual(json.values.name, null);
 });
