@@ -5,8 +5,10 @@ import tsPlugin from '@typescript-eslint/eslint-plugin';
 import promisePlugin from 'eslint-plugin-promise';
 import nPlugin from 'eslint-plugin-n';
 import securityPlugin from 'eslint-plugin-security';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const tsconfigRootDir = new URL('.', import.meta.url).pathname;
+const tsconfigRootDir = path.dirname( fileURLToPath( import.meta.url ) );
 const nodeSettings = { node: { version: '>=24.0.0' } };
 
 export default [
