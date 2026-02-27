@@ -17,12 +17,14 @@
     "LICENSE",
     "README.md",
     "dist",
-    "schema"
+    "schema",
+    "jsr.json"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "lint": "eslint .",
-    "test": "npm run build && npm run lint && node --test"
+    "test": "npm run build && npm run lint && node --test",
+    "jsr:dry": "deno publish --dry-run --allow-dirty"
   },
   "repository": {
     "type": "git",

@@ -83,6 +83,14 @@ interface NormalizedSpec extends FlagSpec {
 	longFlag?: string;
 }
 
+interface RuntimeProcessLike {
+	argv?: unknown;
+}
+
+interface RuntimeDenoLike {
+	args?: unknown;
+}
+
 const isFlagToken = (value: unknown): value is string =>
 	typeof value === 'string' && value.startsWith('-') && value.length > 1;
 
@@ -230,11 +238,32 @@ const validateSchema = (schema: unknown) => {
 	return { flagToKey, normalized };
 };
 
+const coerceStringArgs = (value: unknown): string[] | undefined => {
+	if (!Array.isArray(value) || !value.every((entry) => typeof entry === 'string')) {
+		return undefined;
+	}
+	return value;
+};
+
+const resolveRuntimeArgv = (): string[] => {
+	const processArgv = coerceStringArgs(( globalThis as { process?: RuntimeProcessLike } ).process?.argv);
+	if ( processArgv !== undefined ) {
+		return processArgv.slice( 2 );
+	}
+
+	const denoArgs = coerceStringArgs(( globalThis as { Deno?: RuntimeDenoLike } ).Deno?.args);
+	if ( denoArgs !== undefined ) {
+		return [ ...denoArgs ];
+	}
+
+	return [];
+};
+
 export const defineSchema = <T extends Schema>(schema: T): T => schema;
 
 export const parseArgs = <T extends Schema>(schema: T, options: ParseOptions = {}): ParseResult<T> => {
 	const { flagToKey, normalized } = validateSchema(schema);
-	const argv = options.argv !== undefined ? [ ...options.argv ] : process.argv.slice(2);
+	const argv = options.argv !== undefined ? [ ...options.argv ] : resolveRuntimeArgv();
 	const allowUnknown = options.allowUnknown === true;
 	const stopAtDoubleDash = options.stopAtDoubleDash !== false;
 

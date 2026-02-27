@@ -1,11 +1,13 @@
 # argv-flags
 
-Schema-driven CLI flag parsing for Node.js 24+. Deterministic rules, typed output, and a machine-consumable result model.
+Schema-driven CLI flag parsing for Node.js 24+ and JSR consumers. Deterministic rules, typed output, and a machine-consumable result model.
 
 ## Install
 
 ```sh
 npm install argv-flags
+# or
+deno add jsr:@ismail-elkorchi/argv-flags
 ```
 
 ## Quick start
