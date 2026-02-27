@@ -11,7 +11,7 @@ npm install argv-flags
 ## Quick start
 
 ```js
-import { defineSchema, parseArgs } from 'argv-flags';
+import { defineSchema, parseArgs, toJsonResult } from 'argv-flags';
 
 const schema = defineSchema({
   src: { type: 'string', flags: ['--src'], required: true },
@@ -35,6 +35,7 @@ console.log(result.values.src, result.values.dest);
 ```ts
 defineSchema<T extends Schema>(schema: T): T
 parseArgs<T extends Schema>(schema: T, options?: ParseOptions): ParseResult<T>
+toJsonResult<T extends Schema>(result: ParseResult<T>): ParseResultJson
 ```
 
 ### Schema
@@ -55,6 +56,7 @@ interface FlagSpec<T extends FlagType = FlagType> {
 Notes:
 - `flags` must include at least one flag token (`-x` or `--long`).
 - `default` is cloned for arrays to avoid shared references.
+- Array defaults act as a base; explicit array values append rather than replace.
 - `allowNo` enables `--no-<flag>` for boolean specs (default: `true`).
 - `allowEmpty` allows empty string/array values (default: `false`).
 
@@ -83,6 +85,25 @@ interface ParseResult<S extends Schema> {
   issues: ParseIssue[];
   ok: boolean;
 }
+```
+
+### JSON Schema (ParseResult)
+
+`schema/parse-result.schema.json` defines the JSON-serializable shape of `ParseResult`.
+
+Use `toJsonResult()` to convert `undefined` values to `null` before validation:
+
+```js
+import { parseArgs, toJsonResult } from 'argv-flags';
+import Ajv from 'ajv';
+import schema from 'argv-flags/schema/parse-result.schema.json' assert { type: 'json' };
+
+const result = parseArgs(schemaDef);
+const jsonResult = toJsonResult(result);
+
+const ajv = new Ajv({ allErrors: true });
+const validate = ajv.compile(schema);
+console.log(validate(jsonResult)); // true/false
 ```
 
 ### `issues`

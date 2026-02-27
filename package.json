@@ -1,6 +1,6 @@
 {
   "name": "argv-flags",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "description": "Schema-based CLI flag parser for Node.js.",
   "type": "module",
   "main": "./dist/index.js",
@@ -9,17 +9,20 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
-    }
+    },
+    "./schema/parse-result.schema.json": "./schema/parse-result.schema.json"
   },
   "files": [
     "CHANGELOG.md",
     "LICENSE",
     "README.md",
-    "dist"
+    "dist",
+    "schema"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "test": "npm run build && node --test"
+    "lint": "eslint .",
+    "test": "npm run build && npm run lint && node --test"
   },
   "repository": {
     "type": "git",
@@ -41,7 +44,16 @@
     "node": ">=24"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.2",
     "@types/node": "^24.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.54.0",
+    "@typescript-eslint/parser": "^8.54.0",
+    "ajv": "^8.17.1",
+    "eslint": "^9.39.2",
+    "eslint-plugin-n": "^17.23.2",
+    "eslint-plugin-promise": "^7.2.1",
+    "eslint-plugin-security": "^3.0.1",
+    "globals": "^17.2.0",
     "typescript": "^5.5.4"
   }
 }
