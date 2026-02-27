@@ -121,6 +121,55 @@ test('allowUnknown collects flags without erroring', () => {
   assert.strictEqual(result.ok, true);
 });
 
+test('uses process.argv when parse options omit argv', () => {
+  const schema = defineSchema({
+    name: { type: 'string', flags: ['--name'] }
+  });
+  const originalArgv = process.argv;
+  process.argv = ['node', 'script', '--name', 'from-process'];
+  try {
+    const result = parseArgs(schema);
+    assert.strictEqual(result.ok, true);
+    assert.strictEqual(result.values.name, 'from-process');
+  } finally {
+    process.argv = originalArgv;
+  }
+});
+
+test('falls back to Deno.args when process is unavailable', () => {
+  const schema = defineSchema({
+    name: { type: 'string', flags: ['--name'] }
+  });
+  const processDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'process');
+  const denoDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'Deno');
+  try {
+    Object.defineProperty(globalThis, 'process', {
+      configurable: true,
+      writable: true,
+      value: undefined
+    });
+    Object.defineProperty(globalThis, 'Deno', {
+      configurable: true,
+      writable: true,
+      value: { args: ['--name', 'from-deno'] }
+    });
+    const result = parseArgs(schema);
+    assert.strictEqual(result.ok, true);
+    assert.strictEqual(result.values.name, 'from-deno');
+  } finally {
+    if (processDescriptor !== undefined) {
+      Object.defineProperty(globalThis, 'process', processDescriptor);
+    } else {
+      delete globalThis.process;
+    }
+    if (denoDescriptor !== undefined) {
+      Object.defineProperty(globalThis, 'Deno', denoDescriptor);
+    } else {
+      delete globalThis.Deno;
+    }
+  }
+});
+
 test('invalid schema definitions throw early', () => {
   assert.throws(
     () => parseArgs(null),

@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Add `jsr.json` manifest and `deno publish --dry-run` script for JSR packaging.
+- Add a tag-driven release workflow that gates and publishes to npm and JSR.
+
 ## 1.0.2 - 2026-01-30
 
 - Enforce schema boolean fields and allowNo/allowEmpty validation.
