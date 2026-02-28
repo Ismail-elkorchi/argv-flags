@@ -1,7 +1,7 @@
 {
   "name": "argv-flags",
-  "version": "1.0.2",
-  "description": "Schema-based CLI flag parser for Node.js.",
+  "version": "1.0.3",
+  "description": "Schema-driven CLI flag parser for Node.js, Deno, and Bun.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -24,7 +24,9 @@
     "build": "tsc -p tsconfig.json",
     "lint": "eslint .",
     "test": "npm run build && npm run lint && node --test",
-    "jsr:dry": "deno publish --dry-run --allow-dirty"
+    "check": "node ./scripts/verify-runtime-versions.js && node ./scripts/workflow-policy-check.mjs && node ./scripts/esm-only-guard.mjs && node ./scripts/docs-policy-check.mjs && npm run test",
+    "jsr:dry": "deno publish --dry-run --allow-dirty",
+    "jsr:score": "node ./scripts/jsr-score-gate.mjs"
   },
   "repository": {
     "type": "git",

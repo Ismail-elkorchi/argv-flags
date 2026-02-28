@@ -1,10 +1,9 @@
 {
   "name": "@ismail-elkorchi/argv-flags",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "license": "MIT",
   "exports": {
-    ".": "./src/index.ts",
-    "./schema/parse-result.schema.json": "./schema/parse-result.schema.json"
+    ".": "./src/index.ts"
   },
   "publish": {
     "include": [

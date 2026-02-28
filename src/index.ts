@@ -1,8 +1,19 @@
+/**
+ * Schema-driven CLI flag parsing primitives.
+ *
+ * Supports Node.js, Deno, and Bun environments with deterministic parsing behavior.
+ */
 const BOOLEAN_TRUE = new Set<string>(['true', '1', 'yes', 'y', 'on']);
 const BOOLEAN_FALSE = new Set<string>(['false', '0', 'no', 'n', 'off']);
 
+/**
+ * Supported schema value kinds for a flag.
+ */
 export type FlagType = 'string' | 'boolean' | 'number' | 'array';
 
+/**
+ * Runtime value type mapped from a {@link FlagType}.
+ */
 export type FlagValue<T extends FlagType> = T extends 'string'
 	? string
 	: T extends 'boolean'
@@ -13,6 +24,9 @@ export type FlagValue<T extends FlagType> = T extends 'string'
 				? string[]
 				: never;
 
+/**
+ * Single schema specification for one logical flag key.
+ */
 export interface FlagSpec<T extends FlagType = FlagType> {
 	type: T;
 	flags: readonly string[];
@@ -22,10 +36,19 @@ export interface FlagSpec<T extends FlagType = FlagType> {
 	allowNo?: boolean;
 }
 
+/**
+ * Parser schema keyed by logical option names.
+ */
 export type Schema = Record<string, FlagSpec>;
 
+/**
+ * Parser issue severity.
+ */
 export type IssueSeverity = 'error' | 'warning';
 
+/**
+ * Stable parser issue codes.
+ */
 export type IssueCode =
 	| 'UNKNOWN_FLAG'
 	| 'MISSING_VALUE'
@@ -34,6 +57,9 @@ export type IssueCode =
 	| 'DUPLICATE'
 	| 'EMPTY_VALUE';
 
+/**
+ * Structured parser issue payload.
+ */
 export interface ParseIssue {
 	code: IssueCode;
 	severity: IssueSeverity;
@@ -44,20 +70,32 @@ export interface ParseIssue {
 	index?: number;
 }
 
+/**
+ * Parse behavior toggles.
+ */
 export interface ParseOptions {
 	argv?: readonly string[];
 	allowUnknown?: boolean;
 	stopAtDoubleDash?: boolean;
 }
 
+/**
+ * Typed parsed values for a schema.
+ */
 export type ParsedValues<S extends Schema> = {
 	[K in keyof S]: FlagValue<S[K]['type']> | undefined;
 };
 
+/**
+ * Presence map for explicitly supplied flags.
+ */
 export type ParsedPresent<S extends Schema> = {
 	[K in keyof S]: boolean;
 };
 
+/**
+ * Full parse result payload.
+ */
 export interface ParseResult<S extends Schema> {
 	values: ParsedValues<S>;
 	present: ParsedPresent<S>;
@@ -67,8 +105,14 @@ export interface ParseResult<S extends Schema> {
 	ok: boolean;
 }
 
+/**
+ * JSON-serializable value variant for parse results.
+ */
 export type JsonFlagValue = string | number | boolean | string[] | null;
 
+/**
+ * JSON-safe parse result payload.
+ */
 export interface ParseResultJson {
 	values: Record<string, JsonFlagValue>;
 	present: Record<string, boolean>;
@@ -259,8 +303,14 @@ const resolveRuntimeArgv = (): string[] => {
 	return [];
 };
 
+/**
+ * Identity helper that preserves schema typing.
+ */
 export const defineSchema = <T extends Schema>(schema: T): T => schema;
 
+/**
+ * Parses CLI argv according to a schema definition.
+ */
 export const parseArgs = <T extends Schema>(schema: T, options: ParseOptions = {}): ParseResult<T> => {
 	const { flagToKey, normalized } = validateSchema(schema);
 	const argv = options.argv !== undefined ? [ ...options.argv ] : resolveRuntimeArgv();
@@ -527,6 +577,9 @@ export const parseArgs = <T extends Schema>(schema: T, options: ParseOptions = {
 
 export default parseArgs;
 
+/**
+ * Converts parse results to a JSON-safe structure.
+ */
 export const toJsonResult = <T extends Schema>(result: ParseResult<T>): ParseResultJson => {
 	const values: Record<string, JsonFlagValue> = {};
 	const valueEntries = result.values as Record<string, FlagValue<FlagType> | undefined>;
