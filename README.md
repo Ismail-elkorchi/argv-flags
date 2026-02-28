@@ -164,6 +164,34 @@ Rules are applied in order:
 --no-verbose
 ```
 
+## Common recipes
+
+### 1) Parse explicit argv (non-Node runtimes)
+
+```js
+import { defineSchema, parseArgs } from 'argv-flags';
+
+const schema = defineSchema({
+  mode: { type: 'string', flags: ['--mode'], required: true }
+});
+
+const result = parseArgs(schema, { argv: ['--mode', 'strict'] });
+```
+
+### 2) Accept unknown flags but keep machine-readable diagnostics
+
+```js
+const result = parseArgs(schema, { allowUnknown: true });
+console.log(result.unknown, result.issues);
+```
+
+## Troubleshooting
+
+- `UNKNOWN_FLAG`: schema does not declare the flag; add it to `defineSchema()` or set `allowUnknown: true`.
+- `MISSING_VALUE`: flag expects a value (`string`, `number`, `array`) but none was provided.
+- `INVALID_VALUE`: boolean/number conversion failed; validate CLI input format.
+- `REQUIRED`: missing required schema key; ensure required flags are passed.
+
 ## Versioning and migration
 
 ### 1.0.0
@@ -190,6 +218,14 @@ Migration from 0.x:
 - Deterministic output for a given `argv`.
 - No mutation of the input `argv`.
 - Stable issue codes for programmatic handling.
+
+## Project docs
+
+- `CHANGELOG.md`
+- `SECURITY.md`
+- `CONTRIBUTING.md`
+- `CODE_OF_CONDUCT.md`
+- `SUPPORT.md`
 
 ## License
 
