@@ -2,8 +2,14 @@
 
 ## Unreleased
 
-- Add `jsr.json` manifest and `deno publish --dry-run` script for JSR packaging.
-- Add a tag-driven release workflow that gates and publishes to npm and JSR.
+_No entries yet._
+
+## 1.0.3 - 2026-02-28
+
+- Enforce workflow hardening gates (immutable action pinning, least-privilege permissions, and dependency review checks).
+- Add runtime policy controls (floor/pinned + non-blocking latest staleness checks) and wire CI to one-command truth.
+- Add docs policy and ESM-only guard checks to keep API docs/channel quality deterministic for npm/JSR consumers.
+- Add security triage policy documentation and CodeQL dual-lane configuration (`security-extended` + non-blocking quality lane).
 
 ## 1.0.2 - 2026-01-30
 
