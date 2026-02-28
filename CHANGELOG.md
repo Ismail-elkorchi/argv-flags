@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-_No entries yet._
+- Add `prepare` build step so GitHub installs from `main` include generated runtime artifacts for downstream compatibility gates.
 
 ## 1.0.3 - 2026-02-28
 
