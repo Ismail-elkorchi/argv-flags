@@ -1,6 +1,6 @@
 # argv-flags
 
-Schema-driven CLI flag parsing for Node.js 24+ and JSR consumers. Deterministic rules, typed output, and a machine-consumable result model.
+Define a CLI schema once, then parse argv into typed, deterministic results across Node.js 24+, Deno, and Bun.
 
 ## Install
 
@@ -31,6 +31,26 @@ if (!result.ok) {
 
 console.log(result.values.src, result.values.dest);
 ```
+
+## When to use
+
+- You want deterministic parsing with stable issue codes for automation.
+- You need machine-readable output (`toJsonResult`) validated with JSON Schema.
+- You need one schema model that works across Node.js, Deno, and Bun.
+
+## When not to use
+
+- You only need ad-hoc flag parsing for a one-off script.
+- You need command/subcommand routing, prompts, or terminal UX orchestration.
+- You target older Node.js versions (<24) or CommonJS-only packaging.
+
+## Verification
+
+- Fast local proof: `npm run check:fast`
+- Full repository gate: `npm run check`
+- Contract examples:
+  - `node --test`
+  - JSON result shape validation via `schema/parse-result.schema.json`
 
 ## API
 
@@ -98,7 +118,7 @@ Use `toJsonResult()` to convert `undefined` values to `null` before validation:
 ```js
 import { parseArgs, toJsonResult } from 'argv-flags';
 import Ajv from 'ajv';
-import schema from 'argv-flags/schema/parse-result.schema.json' assert { type: 'json' };
+import schema from 'argv-flags/schema/parse-result.schema.json' with { type: 'json' };
 
 const result = parseArgs(schemaDef);
 const jsonResult = toJsonResult(result);
