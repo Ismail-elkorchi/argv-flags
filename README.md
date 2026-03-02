@@ -118,7 +118,7 @@ Use `toJsonResult()` to convert `undefined` values to `null` before validation:
 ```js
 import { parseArgs, toJsonResult } from 'argv-flags';
 import Ajv from 'ajv';
-import schema from 'argv-flags/schema/parse-result.schema.json' assert { type: 'json' };
+import schema from 'argv-flags/schema/parse-result.schema.json' with { type: 'json' };
 
 const result = parseArgs(schemaDef);
 const jsonResult = toJsonResult(result);

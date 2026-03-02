@@ -1,14 +1,20 @@
 # Security policy
 
-## Reporting
+## Threat model
+
+- Command-line input is untrusted and may be malformed or adversarial.
+- Unknown flags, missing values, and invalid values are expected failure paths.
+- Consumers may rely on machine handling of `issues.code`; message text is informational only.
+
+## Safe usage guidance
+
+- Check `result.ok` before reading parsed values.
+- Treat all `issues` as contract output and handle `severity` + `code` explicitly.
+- Use `toJsonResult()` when serializing parse output for schema validation.
+
+## Reporting vulnerabilities
 
 Report security issues through GitHub Security Advisories for this repository.
-
-## Handling model
-
-- CLI input is treated as untrusted.
-- Parser validation failures use typed issue codes and deterministic output.
-- Maintainers track triage state in private security records.
 
 ## Disclosure workflow
 
