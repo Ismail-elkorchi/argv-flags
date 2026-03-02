@@ -25,6 +25,7 @@
     "prepare": "npm run build",
     "lint": "eslint .",
     "test": "npm run build && npm run lint && node --test",
+    "check:fast": "npm run build && npm run lint && node --test",
     "check": "node ./scripts/verify-runtime-versions.js && node ./scripts/workflow-policy-check.mjs && node ./scripts/esm-only-guard.mjs && node ./scripts/docs-policy-check.mjs && npm run test",
     "jsr:dry": "deno publish --dry-run --allow-dirty",
     "jsr:score": "node ./scripts/jsr-score-gate.mjs",

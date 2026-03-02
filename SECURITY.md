@@ -8,7 +8,7 @@ Report security issues through GitHub Security Advisories for this repository.
 
 - CLI input is treated as untrusted.
 - Parser validation failures use typed issue codes and deterministic output.
-- Security triage inventory is maintained in `docs/security-triage.md`.
+- Maintainers track triage state in private security records.
 
 ## Disclosure workflow
 
