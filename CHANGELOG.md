@@ -2,7 +2,14 @@
 
 ## Unreleased
 
-- Add `prepare` build step so GitHub installs from `main` include generated runtime artifacts for downstream compatibility gates.
+- No entries yet.
+
+## 1.0.4 - 2026-03-03
+
+- Rework README and docs map for faster first-use onboarding (tutorial/how-to/reference/explanation).
+- Add runnable `examples/` scripts with deterministic JSON output and `npm run examples:run`.
+- Add example doc blocks (goal, prereqs, run command, expected output, safety notes) for all shipped examples.
+- Keep parser behavior and public API contracts unchanged.
 
 ## 1.0.3 - 2026-02-28
 

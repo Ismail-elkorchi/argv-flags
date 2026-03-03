@@ -4,8 +4,14 @@
 
 ```sh
 npm ci
+npm run check:fast
 npm run check
 ```
+
+## Verification commands
+
+- `npm run check:fast`: build + lint + unit tests (`node --test`) for rapid local iteration.
+- `npm run check`: full gate including runtime/version policy checks and docs/ESM guards.
 
 ## Change expectations
 
