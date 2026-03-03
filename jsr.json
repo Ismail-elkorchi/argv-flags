@@ -1,6 +1,6 @@
 {
   "name": "@ismail-elkorchi/argv-flags",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "license": "MIT",
   "exports": {
     ".": "./src/index.ts"
@@ -10,6 +10,10 @@
       "LICENSE",
       "README.md",
       "CHANGELOG.md",
+      "SECURITY.md",
+      "CONTRIBUTING.md",
+      "SUPPORT.md",
+      "docs/**",
       "src/**/*.ts",
       "schema/**/*.json",
       "jsr.json",

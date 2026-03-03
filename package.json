@@ -1,6 +1,6 @@
 {
   "name": "argv-flags",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Schema-driven CLI flag parser for Node.js, Deno, and Bun.",
   "type": "module",
   "main": "./dist/index.js",
@@ -16,6 +16,10 @@
     "CHANGELOG.md",
     "LICENSE",
     "README.md",
+    "SECURITY.md",
+    "CONTRIBUTING.md",
+    "SUPPORT.md",
+    "docs",
     "dist",
     "schema",
     "jsr.json"
@@ -23,9 +27,11 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "prepare": "npm run build",
+    "examples:run": "node ./examples/run-all.mjs",
     "lint": "eslint .",
     "test": "npm run build && npm run lint && node --test",
-    "check": "node ./scripts/verify-runtime-versions.js && node ./scripts/workflow-policy-check.mjs && node ./scripts/esm-only-guard.mjs && node ./scripts/docs-policy-check.mjs && npm run test",
+    "check:fast": "npm run build && npm run lint && node --test && npm run examples:run",
+    "check": "node ./scripts/verify-runtime-versions.js && node ./scripts/workflow-policy-check.mjs && node ./scripts/esm-only-guard.mjs && node ./scripts/docs-policy-check.mjs && npm run test && npm run examples:run",
     "jsr:dry": "deno publish --dry-run --allow-dirty",
     "jsr:score": "node ./scripts/jsr-score-gate.mjs",
     "release:audit": "node ./scripts/release-audit.mjs"

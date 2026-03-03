@@ -28,11 +28,17 @@ export type FlagValue<T extends FlagType> = T extends 'string'
  * Single schema specification for one logical flag key.
  */
 export interface FlagSpec<T extends FlagType = FlagType> {
+	/** Parsed value kind for this option. */
 	type: T;
+	/** Accepted CLI spellings (for example `-m`, `--mode`). */
 	flags: readonly string[];
+	/** Marks the option as required when `true`. */
 	required?: boolean;
+	/** Fallback value used when the flag is not provided. */
 	default?: FlagValue<T>;
+	/** Allows empty string/array values for string and array specs. */
 	allowEmpty?: boolean;
+	/** Enables `--no-<flag>` negation for boolean specs. */
 	allowNo?: boolean;
 }
 
@@ -61,12 +67,19 @@ export type IssueCode =
  * Structured parser issue payload.
  */
 export interface ParseIssue {
+	/** Stable machine-readable issue code. */
 	code: IssueCode;
+	/** Issue severity used by `ok` computation. */
 	severity: IssueSeverity;
+	/** Human-readable diagnostic message. */
 	message: string;
+	/** Flag token associated with this issue, when available. */
 	flag?: string;
+	/** Schema key associated with this issue, when available. */
 	key?: string;
+	/** Raw value that triggered the issue, when available. */
 	value?: string;
+	/** Zero-based argv index for the related token, when available. */
 	index?: number;
 }
 
@@ -74,8 +87,11 @@ export interface ParseIssue {
  * Parse behavior toggles.
  */
 export interface ParseOptions {
+	/** Explicit argv input; defaults to runtime arguments when omitted. */
 	argv?: readonly string[];
+	/** Keeps unknown flags in `unknown` instead of emitting errors. */
 	allowUnknown?: boolean;
+	/** Treats `--` as a stop token for flag parsing (default: `true`). */
 	stopAtDoubleDash?: boolean;
 }
 
@@ -97,11 +113,17 @@ export type ParsedPresent<S extends Schema> = {
  * Full parse result payload.
  */
 export interface ParseResult<S extends Schema> {
+	/** Parsed values keyed by schema key. */
 	values: ParsedValues<S>;
+	/** Presence map indicating which schema keys were explicitly provided. */
 	present: ParsedPresent<S>;
+	/** Non-flag argv tokens preserved in encounter order. */
 	rest: string[];
+	/** Unknown flag tokens collected when `allowUnknown` is enabled. */
 	unknown: string[];
+	/** Structured parse diagnostics. */
 	issues: ParseIssue[];
+	/** `true` when no issue with severity `error` exists. */
 	ok: boolean;
 }
 
@@ -114,11 +136,17 @@ export type JsonFlagValue = string | number | boolean | string[] | null;
  * JSON-safe parse result payload.
  */
 export interface ParseResultJson {
+	/** JSON-safe parsed values keyed by schema key (`undefined` becomes `null`). */
 	values: Record<string, JsonFlagValue>;
+	/** JSON-safe presence map keyed by schema key. */
 	present: Record<string, boolean>;
+	/** JSON-safe copy of free argv values. */
 	rest: string[];
+	/** JSON-safe copy of unknown flag tokens. */
 	unknown: string[];
+	/** JSON-safe copy of parse diagnostics. */
 	issues: ParseIssue[];
+	/** `true` when no issue with severity `error` exists. */
 	ok: boolean;
 }
 
@@ -575,6 +603,9 @@ export const parseArgs = <T extends Schema>(schema: T, options: ParseOptions = {
 	};
 };
 
+/**
+ * Default export alias for {@link parseArgs}.
+ */
 export default parseArgs;
 
 /**
