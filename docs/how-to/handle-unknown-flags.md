@@ -1,34 +1,34 @@
 # How-to: capture unknown flags without failing
 
 ## Goal
-Accept additional flags while still parsing known schema keys.
+Capture additional flags for inspection while still parsing known schema keys.
 
-## Prereqs
-- Schema for known flags
-- `allowUnknown: true` parse option
+## Prerequisites
+- Node `>=24`
+- `npm install`
+- `npm run build`
 
-## Copy/paste
-```ts
-import { defineSchema, parseArgs } from "argv-flags";
-
-const schema = defineSchema({
-  mode: { type: "string", flags: ["--mode"], required: true },
-});
-
-const result = parseArgs(schema, {
-  argv: ["--mode", "safe", "--extra", "1", "--other"],
-  allowUnknown: true,
-});
-
-console.log(result.unknown);
-console.log(result.rest);
+## Copy/paste runnable code
+```sh
+node examples/handle-unknown-flags.mjs --mode safe --extra=1 file.txt
 ```
 
-## What you should see
+## Expected output
 - `result.unknown` contains unknown flag tokens.
-- `result.ok` stays `true` when no schema validation errors occur.
+- `result.rest` still contains free positional tokens such as `file.txt`.
+- `result.ok` stays `true` when there are no schema validation errors.
 
-## Safety notes
-> [!WARNING]
-> Treat `unknown` as untrusted input. Validate or sanitize before forwarding to
-> subprocesses.
+## Common failure modes
+- Unknown flags are silently discarded, so wrapper CLIs cannot compose with
+  downstream tools.
+- `allowUnknown: true` is enabled without validating or forwarding the collected
+  tokens explicitly.
+- Callers confuse `unknown` with `rest`; `unknown` contains flagged tokens,
+  while `rest` contains free positional tokens.
+- Callers expect `unknown` to preserve exact downstream argv ordering. It does
+  not. If you need exact pass-through ordering, use `--` and forward
+  [pass-through after `--`](./pass-through-double-dash.md) via `result.rest`.
+
+## Related reference
+- [Options reference](../reference/options.md)
+- [Parse result reference](../reference/parse-result.md)

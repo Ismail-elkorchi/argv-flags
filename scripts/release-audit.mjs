@@ -2,6 +2,8 @@ import { execFile } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { promisify } from 'node:util';
 
+import { buildReleaseNotes } from './release/notes-lib.mjs';
+
 const execFileAsync = promisify(execFile);
 const PR_HASH_REFERENCE_PATTERN = /#([0-9]+)/g;
 const PR_LINK_REFERENCE_PATTERN = /\/pull\/([0-9]+)/g;
@@ -18,14 +20,8 @@ const run = async () => {
         `[release-audit] expected v-prefixed tag for --print-pr-section, received "${tagName}"`
       );
     }
-    const tags = await loadRepositoryTags(repository);
-    const previousTag = resolvePreviousTag(tags, tagName);
-    const expectedPullRequests = await loadExpectedPullRequestIds({
-      repository,
-      latestTag: tagName,
-      previousTag
-    });
-    process.stdout.write(formatPullRequestSection(expectedPullRequests));
+    const notes = buildReleaseNotes({ toRef: tagName });
+    process.stdout.write(formatPullRequestSection(notes.pullRequests));
     return;
   }
 
@@ -334,14 +330,14 @@ function difference(left, right) {
   return [...left].filter((value) => !right.has(value)).sort((a, b) => a - b);
 }
 
-function formatPullRequestSection(ids) {
-  const sorted = [...ids].sort((a, b) => a - b);
+function formatPullRequestSection(pullRequests) {
+  const sorted = [...pullRequests].sort((left, right) => left.number - right.number);
   const lines = ['## Merged pull requests', ''];
   if (sorted.length === 0) {
     lines.push('- _No pull requests detected._');
   } else {
-    for (const id of sorted) {
-      lines.push(`- #${id}`);
+    for (const pullRequest of sorted) {
+      lines.push(`- [${pullRequest.title}] (#${pullRequest.number})`);
     }
   }
   return `${lines.join('\n')}\n`;

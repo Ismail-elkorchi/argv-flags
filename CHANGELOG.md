@@ -2,7 +2,9 @@
 
 ## Unreleased
 
+<!-- release-notes:start -->
 - No entries yet.
+<!-- release-notes:end -->
 
 ## 1.0.4 - 2026-03-03
 

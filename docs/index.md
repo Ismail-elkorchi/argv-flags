@@ -21,7 +21,3 @@ Use this map to find the right doc for the task.
 
 ## Explanation
 - [Design notes](explanation/design.md)
-
-## Related policies
-- [Security policy](../SECURITY.md)
-- [Contributing](../CONTRIBUTING.md)

@@ -1,7 +1,7 @@
 {
   "name": "argv-flags",
   "version": "1.0.4",
-  "description": "Schema-driven CLI flag parser for Node.js, Deno, and Bun.",
+  "description": "Schema-driven CLI flag parser with stable issue codes and machine-readable results for Node.js, Deno, and Bun.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -30,11 +30,16 @@
     "examples:run": "node ./examples/run-all.mjs",
     "lint": "eslint .",
     "test": "npm run build && npm run lint && node --test",
-    "check:fast": "npm run build && npm run lint && node --test && npm run examples:run",
-    "check": "node ./scripts/verify-runtime-versions.js && node ./scripts/workflow-policy-check.mjs && node ./scripts/esm-only-guard.mjs && node ./scripts/docs-policy-check.mjs && npm run test && npm run examples:run",
+    "check:fast": "npm run test && npm run docs:lint:jsr && npm run docs:test:jsr && npm run docs:quality:jsr && npm run examples:run",
+    "check": "node ./scripts/verify-runtime-versions.js && node ./scripts/workflow-policy-check.mjs && node ./scripts/esm-only-guard.mjs && node ./scripts/docs-policy-check.mjs && npm run test && npm run docs:lint:jsr && npm run docs:test:jsr && npm run docs:quality:jsr && npm run examples:run",
+    "docs:lint:jsr": "deno doc --lint src/index.ts",
+    "docs:test:jsr": "deno test --doc --no-check src/index.ts",
+    "docs:quality:jsr": "node ./scripts/docs-quality-jsr.mjs",
     "jsr:dry": "deno publish --dry-run --allow-dirty",
     "jsr:score": "node ./scripts/jsr-score-gate.mjs",
-    "release:audit": "node ./scripts/release-audit.mjs"
+    "release:audit": "node ./scripts/release-audit.mjs",
+    "release:notes:dry-run": "node ./scripts/release/render-notes.mjs --dry-run",
+    "changelog:update:dry-run": "node ./scripts/release/update-changelog.mjs --dry-run"
   },
   "repository": {
     "type": "git",
