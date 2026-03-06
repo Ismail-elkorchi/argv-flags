@@ -1,7 +1,7 @@
 {
   "name": "argv-flags",
   "version": "1.0.4",
-  "description": "Schema-driven CLI flag parser with stable issue codes and machine-readable results for Node.js, Deno, and Bun.",
+  "description": "Schema-driven CLI flag parser with stable issue codes and machine-readable results.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

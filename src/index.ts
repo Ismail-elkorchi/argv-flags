@@ -1,5 +1,5 @@
 /**
- * Schema-driven CLI flag parsing primitives.
+ * Schema-driven CLI flag parser with stable issue codes and machine-readable results.
  *
  * Supports Node.js, Deno, and Bun environments with deterministic parsing behavior.
  */

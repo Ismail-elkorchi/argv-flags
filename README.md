@@ -1,6 +1,6 @@
 # argv-flags
 
-Schema-driven CLI flag parsing with stable issue codes and machine-readable results.
+Schema-driven CLI flag parser with stable issue codes and machine-readable results.
 
 ## What it is
 
@@ -54,9 +54,9 @@ console.log(result.values.src, result.values.dest);
 
 ## Documentation
 
-- [Docs index](./docs/index.md)
-- [Tutorial: first CLI with exit codes](./docs/tutorial/first-cli.md)
-- [Reference: options](./docs/reference/options.md)
+- [Docs index](https://github.com/Ismail-elkorchi/argv-flags/blob/main/docs/index.md)
+- [Tutorial: first CLI with exit codes](https://github.com/Ismail-elkorchi/argv-flags/blob/main/docs/tutorial/first-cli.md)
+- [Reference: options](https://github.com/Ismail-elkorchi/argv-flags/blob/main/docs/reference/options.md)
 
 ## Verification
 
