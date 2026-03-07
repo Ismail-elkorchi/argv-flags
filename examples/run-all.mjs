@@ -66,6 +66,31 @@ function parseJson(streamText) {
 }
 
 {
+  const result = runExample("handle-unknown-flags.mjs", ["--mode", "safe", "--extra=1", "file.txt"]);
+  assert.equal(result.status, 0, result.stderr);
+  const payload = parseJson(result.stdout);
+  assert.equal(payload.ok, true);
+  assert.deepEqual(payload.unknown, ["--extra=1"]);
+  assert.deepEqual(payload.rest, ["file.txt"]);
+}
+
+{
+  const result = runExample("stop-parsing.mjs", ["--mode", "safe", "--", "--literal", "value"]);
+  assert.equal(result.status, 0, result.stderr);
+  const payload = parseJson(result.stdout);
+  assert.equal(payload.ok, true);
+  assert.deepEqual(payload.rest, ["--literal", "value"]);
+}
+
+{
+  const result = runExample("parse-arrays.mjs", ["--include", "src", "test", "--include", "docs"]);
+  assert.equal(result.status, 0, result.stderr);
+  const payload = parseJson(result.stdout);
+  assert.equal(payload.ok, true);
+  assert.deepEqual(payload.include, ["src", "test", "docs"]);
+}
+
+{
   const result = runExample("structured-errors.mjs", ["--retries", "not-a-number"]);
   assert.equal(result.status, 1);
   const payload = parseJson(result.stderr);

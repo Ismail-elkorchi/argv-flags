@@ -3,31 +3,28 @@
 ## Goal
 Use `--` as a delimiter so remaining tokens are forwarded unchanged.
 
-## Prereqs
-- Schema for your local flags
-- `stopAtDoubleDash: true` (default)
+## Prerequisites
+- Node `>=24`
+- `npm install`
+- `npm run build`
 
-## Copy/paste
-```ts
-import { defineSchema, parseArgs } from "argv-flags";
-
-const schema = defineSchema({
-  mode: { type: "string", flags: ["--mode"], required: true },
-});
-
-const result = parseArgs(schema, {
-  argv: ["--mode", "safe", "--", "--literal", "value"],
-  stopAtDoubleDash: true,
-});
-
-console.log(result.rest);
+## Copy/paste runnable code
+```sh
+node examples/stop-parsing.mjs --mode safe -- --literal value
 ```
 
-## What you should see
+## Expected output
 - `result.rest` equals `["--literal", "value"]`.
 - Tokens after `--` are not interpreted as flags.
 
-## Safety notes
-> [!NOTE]
-> Forward `result.rest` only to trusted command paths and explicit argument
-> positions.
+## Common failure modes
+- `stopAtDoubleDash` is disabled, so tokens after `--` are parsed as local
+  flags instead of being forwarded.
+- The wrapper mixes `rest` with `unknown` tokens even though they have
+  different semantics.
+- Downstream consumers assume `argv-flags` assigns exit codes. Exit-code policy
+  still belongs to the wrapper CLI.
+
+## Related reference
+- [Options reference](../reference/options.md)
+- [Parse result reference](../reference/parse-result.md)

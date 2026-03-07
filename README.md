@@ -1,6 +1,6 @@
 # argv-flags
 
-Schema-based CLI flag parsing with deterministic, machine-readable results.
+Schema-driven CLI flag parser with stable issue codes and machine-readable results.
 
 ## What it is
 
@@ -34,11 +34,6 @@ if (!result.ok) {
 console.log(result.values.src, result.values.dest);
 ```
 
-## Options reference
-
-- [Options reference](https://github.com/Ismail-elkorchi/argv-flags/blob/main/docs/reference/options.md)
-- [10-minute tutorial: first CLI](https://github.com/Ismail-elkorchi/argv-flags/blob/main/docs/tutorial/first-cli.md)
-
 ## When not to use
 
 - You only need ad-hoc parsing for a one-off script.
@@ -57,18 +52,11 @@ console.log(result.values.src, result.values.dest);
 - Runtimes: Node `>=24`, current Deno, current Bun.
 - JSON schema workflows use `readFileSync(...); JSON.parse(...)` (no JSON import attributes required).
 
-## Links
+## Documentation
 
 - [Docs index](https://github.com/Ismail-elkorchi/argv-flags/blob/main/docs/index.md)
-- Reference:
-  - [Reference index](https://github.com/Ismail-elkorchi/argv-flags/blob/main/docs/reference/index.md)
-  - [Parse-result JSON schema](https://github.com/Ismail-elkorchi/argv-flags/blob/main/schema/parse-result.schema.json)
-  - [Security policy](https://github.com/Ismail-elkorchi/argv-flags/blob/main/SECURITY.md)
-- How-to:
-  - [First CLI tutorial](https://github.com/Ismail-elkorchi/argv-flags/blob/main/docs/tutorial/first-cli.md)
-  - [How-to index](https://github.com/Ismail-elkorchi/argv-flags/blob/main/docs/how-to/index.md)
-  - [Contributing](https://github.com/Ismail-elkorchi/argv-flags/blob/main/CONTRIBUTING.md)
-- Explanation: [explanation index](https://github.com/Ismail-elkorchi/argv-flags/blob/main/docs/explanation/index.md)
+- [Tutorial: first CLI with exit codes](https://github.com/Ismail-elkorchi/argv-flags/blob/main/docs/tutorial/first-cli.md)
+- [Reference: options](https://github.com/Ismail-elkorchi/argv-flags/blob/main/docs/reference/options.md)
 
 ## Verification
 

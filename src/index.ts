@@ -1,5 +1,5 @@
 /**
- * Schema-driven CLI flag parsing primitives.
+ * Schema-driven CLI flag parser with stable issue codes and machine-readable results.
  *
  * Supports Node.js, Deno, and Bun environments with deterministic parsing behavior.
  */
@@ -8,11 +8,17 @@ const BOOLEAN_FALSE = new Set<string>(['false', '0', 'no', 'n', 'off']);
 
 /**
  * Supported schema value kinds for a flag.
+ *
+ * Use these literals in {@link FlagSpec.type} to declare how a logical option
+ * should be parsed from argv tokens.
  */
 export type FlagType = 'string' | 'boolean' | 'number' | 'array';
 
 /**
  * Runtime value type mapped from a {@link FlagType}.
+ *
+ * This conditional type drives the inferred `values` shape returned by
+ * {@link parseArgs}.
  */
 export type FlagValue<T extends FlagType> = T extends 'string'
 	? string
@@ -26,6 +32,18 @@ export type FlagValue<T extends FlagType> = T extends 'string'
 
 /**
  * Single schema specification for one logical flag key.
+ *
+ * Constraints:
+ * - `flags` must contain at least one token.
+ * - Every token must start with `-`.
+ * - `allowNo` is only valid for boolean flags.
+ * - `allowEmpty` is only valid for string and array flags.
+ * - Array defaults are cloned on each parse call.
+ *
+ * Defaults:
+ * - `required`: `false`
+ * - `allowEmpty`: `false`
+ * - `allowNo`: `true` for boolean flags
  */
 export interface FlagSpec<T extends FlagType = FlagType> {
 	/** Parsed value kind for this option. */
@@ -44,6 +62,9 @@ export interface FlagSpec<T extends FlagType = FlagType> {
 
 /**
  * Parser schema keyed by logical option names.
+ *
+ * Schema keys become the stable property names in {@link ParseResult.values},
+ * {@link ParseResult.present}, and {@link ParseIssue.key}.
  */
 export type Schema = Record<string, FlagSpec>;
 
@@ -54,6 +75,9 @@ export type IssueSeverity = 'error' | 'warning';
 
 /**
  * Stable parser issue codes.
+ *
+ * Treat these codes as the machine contract. Human-readable `message` strings
+ * are for logs and operator output, not programmatic branching.
  */
 export type IssueCode =
 	| 'UNKNOWN_FLAG'
@@ -65,6 +89,9 @@ export type IssueCode =
 
 /**
  * Structured parser issue payload.
+ *
+ * Returned in {@link ParseResult.issues} for unknown flags, missing values,
+ * invalid coercions, required-field failures, and duplicate-flag warnings.
  */
 export interface ParseIssue {
 	/** Stable machine-readable issue code. */
@@ -85,6 +112,11 @@ export interface ParseIssue {
 
 /**
  * Parse behavior toggles.
+ *
+ * Defaults:
+ * - `argv`: runtime argv when available, otherwise `[]`
+ * - `allowUnknown`: `false`
+ * - `stopAtDoubleDash`: `true`
  */
 export interface ParseOptions {
 	/** Explicit argv input; defaults to runtime arguments when omitted. */
@@ -97,6 +129,8 @@ export interface ParseOptions {
 
 /**
  * Typed parsed values for a schema.
+ *
+ * Values stay `undefined` until a schema default or argv token supplies them.
  */
 export type ParsedValues<S extends Schema> = {
 	[K in keyof S]: FlagValue<S[K]['type']> | undefined;
@@ -104,6 +138,9 @@ export type ParsedValues<S extends Schema> = {
 
 /**
  * Presence map for explicitly supplied flags.
+ *
+ * A key is `true` only when argv explicitly contained the flag. Defaults do not
+ * flip presence on.
  */
 export type ParsedPresent<S extends Schema> = {
 	[K in keyof S]: boolean;
@@ -111,6 +148,13 @@ export type ParsedPresent<S extends Schema> = {
 
 /**
  * Full parse result payload.
+ *
+ * Semantics:
+ * - `values` contains typed parsed output plus any schema defaults.
+ * - `present` tracks whether a caller explicitly supplied a flag.
+ * - `rest` preserves free positional tokens and tokens after `--`.
+ * - `unknown` captures unknown flag tokens only when `allowUnknown` is enabled.
+ * - `ok` is `false` only when at least one issue has severity `"error"`.
  */
 export interface ParseResult<S extends Schema> {
 	/** Parsed values keyed by schema key. */
@@ -129,11 +173,17 @@ export interface ParseResult<S extends Schema> {
 
 /**
  * JSON-serializable value variant for parse results.
+ *
+ * This is the value domain produced by {@link toJsonResult}.
  */
 export type JsonFlagValue = string | number | boolean | string[] | null;
 
 /**
  * JSON-safe parse result payload.
+ *
+ * This shape is designed for validation against
+ * `schema/parse-result.schema.json`, where missing typed values are encoded as
+ * `null` instead of `undefined`.
  */
 export interface ParseResultJson {
 	/** JSON-safe parsed values keyed by schema key (`undefined` becomes `null`). */
@@ -332,12 +382,79 @@ const resolveRuntimeArgv = (): string[] => {
 };
 
 /**
- * Identity helper that preserves schema typing.
+ * Identity helper that preserves schema typing for object literals.
+ *
+ * `defineSchema()` does not validate the schema eagerly. Structural validation
+ * happens when {@link parseArgs} normalizes the schema before parsing.
+ *
+ * @example
+ * ```ts
+ * import { defineSchema } from "./index.ts";
+ *
+ * const schema = defineSchema({
+ *   src: { type: "string", flags: ["--src"], required: true },
+ *   verbose: { type: "boolean", flags: ["--verbose"], default: false },
+ * });
+ *
+ * console.log(schema.src.flags[0]);
+ * ```
  */
 export const defineSchema = <T extends Schema>(schema: T): T => schema;
 
 /**
- * Parses CLI argv according to a schema definition.
+ * Parses argv tokens against a declared schema and returns deterministic typed
+ * output plus structured diagnostics.
+ *
+ * Defaults:
+ * - `options.argv`: runtime argv (`process.argv.slice(2)` on Node/Bun,
+ *   `Deno.args` on Deno, otherwise `[]`)
+ * - `options.allowUnknown`: `false`
+ * - `options.stopAtDoubleDash`: `true`
+ *
+ * Result semantics:
+ * - `values` contains typed values plus defaults.
+ * - `present` only marks explicitly supplied flags.
+ * - `rest` contains free positional tokens and tokens after `--`.
+ * - `unknown` only contains unknown flag tokens when `allowUnknown` is `true`.
+ * - `issues` contains warnings and errors with stable issue codes.
+ * - `ok` is `true` only when no `"error"` issue exists.
+ *
+ * @throws {TypeError} If the schema is structurally invalid.
+ *
+ * @example
+ * ```ts
+ * import { defineSchema, parseArgs } from "./index.ts";
+ *
+ * const schema = defineSchema({
+ *   src: { type: "string", flags: ["--src"], required: true },
+ *   retries: { type: "number", flags: ["--retries"] },
+ *   verbose: { type: "boolean", flags: ["--verbose"], default: false },
+ * });
+ *
+ * const result = parseArgs(schema, {
+ *   argv: ["--src", "input.txt", "--retries", "3", "--verbose"],
+ * });
+ *
+ * console.log(result.ok);
+ * console.log(result.values.src);
+ * console.log(result.values.retries);
+ * console.log(result.present.verbose);
+ * ```
+ *
+ * @example
+ * ```ts
+ * import { defineSchema, parseArgs } from "./index.ts";
+ *
+ * const schema = defineSchema({
+ *   mode: { type: "string", flags: ["--mode"], required: true },
+ * });
+ *
+ * const result = parseArgs(schema, {
+ *   argv: ["--mode", "safe", "--", "--trace", "--limit=2"],
+ * });
+ *
+ * console.log(result.rest);
+ * ```
  */
 export const parseArgs = <T extends Schema>(schema: T, options: ParseOptions = {}): ParseResult<T> => {
 	const { flagToKey, normalized } = validateSchema(schema);
@@ -609,7 +726,31 @@ export const parseArgs = <T extends Schema>(schema: T, options: ParseOptions = {
 export default parseArgs;
 
 /**
- * Converts parse results to a JSON-safe structure.
+ * Converts a typed parse result into a JSON-safe payload.
+ *
+ * Conversion rules:
+ * - `undefined` values become `null`
+ * - arrays are copied
+ * - `present`, `rest`, `unknown`, and `issues` are copied into plain JSON-safe
+ *   containers
+ *
+ * Use this before validating results against
+ * `schema/parse-result.schema.json` or emitting machine-readable JSON from a
+ * CLI wrapper.
+ *
+ * @example
+ * ```ts
+ * import { defineSchema, parseArgs, toJsonResult } from "./index.ts";
+ *
+ * const schema = defineSchema({
+ *   count: { type: "number", flags: ["--count"] },
+ * });
+ *
+ * const result = parseArgs(schema, { argv: [] });
+ * const json = toJsonResult(result);
+ *
+ * console.log(json.values.count);
+ * ```
  */
 export const toJsonResult = <T extends Schema>(result: ParseResult<T>): ParseResultJson => {
 	const values: Record<string, JsonFlagValue> = {};

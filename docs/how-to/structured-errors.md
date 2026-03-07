@@ -4,23 +4,32 @@
 Return predictable exit codes and machine-readable issue codes for CI or agent
 workflows.
 
-## Prereqs
+## Prerequisites
 - Node `>=24`
 - `npm install`
 - `npm run build`
 
-## Copy/paste
+## Copy/paste runnable code
 ```sh
 node examples/structured-errors.mjs --retries not-a-number
 echo $?
 ```
 
-## What you should see
+## Expected output
 - stderr JSON with `"ok": false`
 - first issue code is `"INVALID_VALUE"`
 - command exits with status code `1`
 
-## Safety notes
-> [!WARNING]
-> Write structured diagnostics to stderr and keep stdout reserved for success
-> payloads. This avoids mixed-output parsing failures in scripts.
+## Common failure modes
+- Success payloads and failure diagnostics are both written to stdout, which
+  breaks automation consumers.
+- Callers branch on human-readable messages instead of stable `issue.code`
+  values.
+- Exit code `1` is reused for usage, validation, and downstream failures
+  without a documented contract around each case.
+- Callers assume `argv-flags` defines exit codes. It does not; your wrapper
+  decides whether parse failures map to `1`, `2`, or another contract.
+
+## Related reference
+- [Parse result reference](../reference/parse-result.md)
+- [Options reference](../reference/options.md)

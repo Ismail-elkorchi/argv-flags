@@ -41,9 +41,7 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
           TAG_NAME: ${{ github.ref_name }}
         run: |
-          node ./scripts/changelog-section.mjs > release-notes.md
-          printf '\n' >> release-notes.md
-          node ./scripts/release-audit.mjs --print-pr-section --tag "${TAG_NAME}" >> release-notes.md
+          node ./scripts/release/render-notes.mjs --to-ref "${TAG_NAME}" > release-notes.md
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -81,6 +79,10 @@ jobs:
           node-version: ${{ steps.runtime-policy.outputs.node_pinned }}
           registry-url: https://registry.npmjs.org
           cache: npm
+      - name: Setup Deno
+        uses: denoland/setup-deno@e95548e56dfa95d4e1a28d6f422fafe75c4c26fb # v2.0.3
+        with:
+          deno-version: ${{ steps.runtime-policy.outputs.deno_pinned }}
       - name: Install
         run: npm ci
       - name: Quality gates

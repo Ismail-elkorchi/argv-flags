@@ -3,29 +3,28 @@
 ## Goal
 Collect repeated values for one flag key into a single ordered array.
 
-## Prereqs
+## Prerequisites
 - `argv-flags` installed
+- `npm run build`
 - Schema includes an `array` field
 
-## Copy/paste
-```ts
-import { defineSchema, parseArgs } from "argv-flags";
-
-const schema = defineSchema({
-  include: { type: "array", flags: ["--include"], default: [] },
-});
-
-const result = parseArgs(schema, {
-  argv: ["--include", "src", "test", "--include", "docs"],
-});
-
-console.log(result.values.include);
+## Copy/paste runnable code
+```sh
+node examples/parse-arrays.mjs --include src test --include docs
 ```
 
-## What you should see
+## Expected output
 - Output array preserves encounter order: `["src", "test", "docs"]`.
 
-## Safety notes
-> [!NOTE]
-> Array defaults are cloned internally, so one parse call does not mutate
-> defaults used by later calls.
+## Common failure modes
+- Callers expect later array occurrences to replace earlier ones. `argv-flags`
+  appends instead of replacing.
+- Mutable array defaults are reused outside the parser. `argv-flags` clones the
+  default per parse call, but your surrounding application state may still
+  mutate shared data.
+- A required array flag is declared without handling the empty-array case when
+  no values follow the flag.
+
+## Related reference
+- [Schema reference](../reference/schema.md)
+- [Parse result reference](../reference/parse-result.md)
