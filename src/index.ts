@@ -760,7 +760,7 @@ export const toJsonResult = <T extends Schema>(result: ParseResult<T>): ParseRes
 			values[key] = null;
 			continue;
 		}
-		values[key] = value as JsonFlagValue;
+		values[key] = value;
 	}
 	const presentEntries = result.present as Record<string, boolean>;
 	const present: Record<string, boolean> = {};
