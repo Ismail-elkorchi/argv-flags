@@ -61,16 +61,16 @@
     "node": ">=24"
   },
   "devDependencies": {
-    "@eslint/js": "^9.39.3",
-    "@types/node": "^24.0.0",
-    "@typescript-eslint/eslint-plugin": "^8.56.1",
-    "@typescript-eslint/parser": "^8.54.0",
-    "ajv": "^8.17.1",
-    "eslint": "^9.39.3",
-    "eslint-plugin-n": "^17.24.0",
-    "eslint-plugin-promise": "^7.2.1",
-    "eslint-plugin-security": "^3.0.1",
-    "globals": "^17.3.0",
-    "typescript": "^5.5.4"
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^25.9.1",
+    "@typescript-eslint/eslint-plugin": "^8.60.0",
+    "@typescript-eslint/parser": "^8.60.0",
+    "ajv": "^8.20.0",
+    "eslint": "^10.4.0",
+    "eslint-plugin-n": "^18.0.1",
+    "eslint-plugin-promise": "^7.3.0",
+    "eslint-plugin-security": "^4.0.0",
+    "globals": "^17.6.0",
+    "typescript": "^6.0.3"
   }
 }
