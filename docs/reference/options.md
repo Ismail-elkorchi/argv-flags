@@ -16,11 +16,25 @@ interface FlagSpec<T extends FlagType = FlagType> {
 ```
 
 - `type` (required): one of `string`, `boolean`, `number`, `array`.
-- `flags` (required): one or more flag tokens; each token must start with `-` and have length `>= 2`.
+- `flags` (required): one or more flag tokens.
+  - Must start with `-` and have length `>= 2`.
+  - Short flags are allowed as tokens like `-v`.
+  - Long flags are allowed as tokens like `--verbose`.
+  - `--` and flags containing whitespace or `=` are rejected.
+  - Long flags cannot start with `--no-`.
 - `required` (default: `false`): missing key reports `REQUIRED`.
 - `default` (default: none): fallback value when the flag is not present.
 - `allowEmpty` (default: `false`): allows empty values for string/array specs.
-- `allowNo` (default: `true`): allows `--no-<flag>` for boolean specs.
+- `allowNo` (default: `true`): enables `--no-<flag>` for boolean specs with a long flag.
+
+Boolean negation alias metadata:
+
+`normalizeSchema()` computes effective negation aliases for boolean long flags.
+
+For each boolean entry with a long flag, the parser accepts:
+
+- positive form: `--enabled`
+- negative form: `--no-enabled` (when `allowNo` is not `false`)
 
 ## `ParseOptions` fields
 
