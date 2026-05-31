@@ -60,6 +60,16 @@ export interface FlagSpec<T extends FlagType = FlagType> {
 	allowNo?: boolean;
 }
 
+/** Structured metadata for boolean negation aliases discovered during schema normalization. */
+export interface BooleanNegationMetadata {
+	/** Logical schema key associated with the negation alias. */
+	key: string;
+	/** Positive flag name used in schema. */
+	positiveFlag: string;
+	/** Derived negation flag that the parser accepts. */
+	negativeFlag: string;
+}
+
 /**
  * Parser schema keyed by logical option names.
  *
@@ -108,6 +118,20 @@ export interface ParseIssue {
 	value?: string;
 	/** Zero-based argv index for the related token, when available. */
 	index?: number;
+}
+
+/** Non-throwing schema normalization result. */
+export interface SchemaNormalizationResult {
+	/** Parsed flag map keyed by token (`--flag`, `-f`) to schema key. */
+	flagToKey: Record<string, string>;
+	/** Normalized schema specs keyed by schema key. */
+	normalized: Record<string, NormalizedSpec>;
+	/** Effective negation aliases for boolean long flags. */
+	booleanNegations: readonly BooleanNegationMetadata[];
+	/** Human-readable schema issues. */
+	issues: readonly string[];
+	/** Whether schema normalization succeeded. */
+	ok: boolean;
 }
 
 /**
@@ -200,9 +224,16 @@ export interface ParseResultJson {
 	ok: boolean;
 }
 
-interface NormalizedSpec extends FlagSpec {
+/**
+ * Internalized flag specification used only by parser internals and schema normalization output.
+ */
+export interface NormalizedSpec extends FlagSpec {
+	/** Normalized flag tokens with validated flag syntax. */
 	flags: string[];
+	/** Primary long flag token, if one was declared. */
 	longFlag?: string;
+	/** Effective negation alias derived from `--<flag>` for boolean options. */
+	effectiveNegation?: string;
 }
 
 interface RuntimeProcessLike {
@@ -225,7 +256,7 @@ const normalizeBoolean = (value: unknown): boolean | undefined => {
 };
 
 const isNumericValue = (value: unknown): boolean => {
-	if (typeof value !== 'string' || value.length === 0) return false;
+	if (typeof value !== 'string' || value.length === 0 || value.trim().length === 0) return false;
 	const parsed = Number(value);
 	return Number.isFinite(parsed);
 };
@@ -249,96 +280,125 @@ const splitInlineValue = (token: string): { flag: string; value?: string } => {
 const isStringArray = (value: unknown): value is string[] =>
 	Array.isArray(value) && value.every((entry) => typeof entry === 'string');
 
-const normalizeDefaultValue = (
-	key: string,
-	value: unknown,
-	type: FlagType
-): FlagValue<FlagType> | undefined => {
-	if (value === undefined) {
-		return undefined;
-	}
-	switch (type) {
-		case 'string':
-			if (typeof value !== 'string') {
-				throw new TypeError(`Schema entry "${key}" default must be a string.`);
-			}
-			return value;
-		case 'boolean':
-			if (typeof value !== 'boolean') {
-				throw new TypeError(`Schema entry "${key}" default must be a boolean.`);
-			}
-			return value;
-		case 'number':
-			if (typeof value !== 'number' || !Number.isFinite(value)) {
-				throw new TypeError(`Schema entry "${key}" default must be a finite number.`);
-			}
-			return value;
-		case 'array':
-			if (!isStringArray(value)) {
-				throw new TypeError(`Schema entry "${key}" default must be a string array.`);
-			}
-			return value;
-		default: {
-			const exhaustive: never = type;
-			throw new TypeError(`Schema entry "${key}" has invalid type "${String(exhaustive)}".`);
-		}
-	}
+const addIssue = (issues: string[], message: string) => {
+	issues.push(message);
 };
 
-const validateSchema = (schema: unknown) => {
+const isValidFlagToken = (key: string, flag: string): string | undefined => {
+	if (flag.length < 2 || !flag.startsWith('-')) {
+		return `Schema entry "${key}" has invalid flag "${flag}".`;
+	}
+	if (flag === '--') {
+		return `Schema entry "${key}" flag "${flag}" is reserved for argument boundary.`;
+	}
+	if (flag.includes('=')) {
+		return `Schema entry "${key}" flag "${flag}" must not contain "=".`;
+	}
+	if (flag.includes(' ')) {
+		return `Schema entry "${key}" flag "${flag}" must not contain whitespace.`;
+	}
+	if (flag.startsWith('--no-')) {
+		return `Schema entry "${key}" flag "${flag}" cannot start with "--no-". Use allowNo metadata instead.`;
+	}
+	if (flag.startsWith('--')) {
+		if (!/^--[a-zA-Z][A-Za-z0-9-]*$/.test(flag)) {
+			return `Schema entry "${key}" has invalid flag "${flag}".`;
+		}
+	} else if (flag.startsWith('-')) {
+		if (!/^-[a-zA-Z0-9]$/.test(flag) && !/^-{1}[a-zA-Z0-9][a-zA-Z0-9-]*$/.test(flag)) {
+			return `Schema entry "${key}" has invalid flag "${flag}".`;
+		}
+	}
+	return undefined;
+};
+
+
+/** Validates and normalizes schema without throwing. */
+export const normalizeSchema = (schema: unknown): SchemaNormalizationResult => {
+	const issues: string[] = [];
 	if (schema === null || typeof schema !== 'object' || Array.isArray(schema)) {
-		throw new TypeError('Schema must be an object.');
+		return {
+			ok: false,
+			flagToKey: {},
+			normalized: {},
+			booleanNegations: [],
+			issues: ['Schema must be an object.']
+		};
 	}
 
 	const flagToKey = new Map<string, string>();
+	const negationToKey = new Map<string, string>();
 	const normalized = new Map<string, NormalizedSpec>();
 	const typedSchema = schema as Record<string, unknown>;
+	const booleanNegations: BooleanNegationMetadata[] = [];
 
 	for (const key of Object.keys(typedSchema)) {
 		const rawSpec = typedSchema[key];
 		if (rawSpec === null || typeof rawSpec !== 'object' || Array.isArray(rawSpec)) {
-			throw new TypeError(`Schema entry for "${key}" must be an object.`);
+			addIssue(issues, `Schema entry for "${key}" must be an object.`);
+			continue;
 		}
 		const specRecord = rawSpec as Record<string, unknown>;
 		const type = specRecord['type'];
 		if (type !== 'string' && type !== 'boolean' && type !== 'number' && type !== 'array') {
-			throw new TypeError(`Schema entry "${key}" has invalid type.`);
+			addIssue(issues, `Schema entry "${key}" has invalid type.`);
+			continue;
 		}
 		const flagsInput = specRecord['flags'];
 		if (!Array.isArray(flagsInput) || flagsInput.length === 0) {
-			throw new TypeError(`Schema entry "${key}" must define at least one flag.`);
+			addIssue(issues, `Schema entry "${key}" must define at least one flag.`);
+			continue;
 		}
-		const flags: string[] = [];
+			const flags: string[] = [];
 		for (const flag of flagsInput) {
-			if (typeof flag !== 'string' || flag.length < 2 || !flag.startsWith('-')) {
-				throw new TypeError(`Schema entry "${key}" has invalid flag "${String(flag)}".`);
+			if (typeof flag !== 'string') {
+				addIssue(issues, `Schema entry "${key}" has invalid flag "${typeof flag === 'string' ? flag : JSON.stringify(flag)}".`);
+				continue;
+			}
+			const flagIssue = isValidFlagToken(key, flag);
+			if (flagIssue !== undefined) {
+				addIssue(issues, flagIssue);
+				continue;
 			}
 			if (flagToKey.has(flag)) {
-				const existing = flagToKey.get(flag);
-				throw new TypeError(`Flag "${flag}" is already assigned to "${existing ?? ''}".`);
+				const existing = flagToKey.get(flag) ?? '(existing flag)';
+				addIssue(issues, `Flag "${flag}" is already assigned to "${existing}".`);
+				continue;
 			}
 			flagToKey.set(flag, key);
 			flags.push(flag);
 		}
+		if (flags.length === 0) {
+			continue;
+		}
 		const requiredValue = specRecord['required'];
 		if (requiredValue !== undefined && typeof requiredValue !== 'boolean') {
-			throw new TypeError(`Schema entry "${key}" required must be a boolean.`);
+			addIssue(issues, `Schema entry "${key}" required must be a boolean.`);
+			continue;
 		}
 		const allowNoValue = specRecord['allowNo'];
 		if (allowNoValue !== undefined && typeof allowNoValue !== 'boolean') {
-			throw new TypeError(`Schema entry "${key}" allowNo must be a boolean.`);
+			addIssue(issues, `Schema entry "${key}" allowNo must be a boolean.`);
+			continue;
 		}
 		if (allowNoValue !== undefined && type !== 'boolean') {
-			throw new TypeError(`Schema entry "${key}" allowNo is only valid for boolean types.`);
+			addIssue(issues, `Schema entry "${key}" allowNo is only valid for boolean types.`);
+			continue;
 		}
 		const allowEmptyValue = specRecord['allowEmpty'];
 		if (allowEmptyValue !== undefined && typeof allowEmptyValue !== 'boolean') {
-			throw new TypeError(`Schema entry "${key}" allowEmpty must be a boolean.`);
+			addIssue(issues, `Schema entry "${key}" allowEmpty must be a boolean.`);
+			continue;
 		}
 		if (allowEmptyValue !== undefined && type !== 'string' && type !== 'array') {
-			throw new TypeError(`Schema entry "${key}" allowEmpty is only valid for string or array types.`);
+			addIssue(issues, `Schema entry "${key}" allowEmpty is only valid for string or array types.`);
+			continue;
 		}
 		const defaultValue = normalizeDefaultValue(key, specRecord['default'], type);
+		if (defaultValue instanceof Error) {
+			addIssue(issues, defaultValue.message);
+			continue;
+		}
 		const spec: FlagSpec = {
 			type,
 			flags,
@@ -354,10 +414,66 @@ const validateSchema = (schema: unknown) => {
 			flags,
 			...(typeof longFlag === 'string' ? { longFlag } : {})
 		};
+		if (type === 'boolean' && spec.allowNo !== false && typeof longFlag === 'string') {
+			const noFlag = `--no-${longFlag.slice(2)}`;
+			if (negationToKey.has(noFlag) || flagToKey.has(noFlag)) {
+				addIssue(issues, `Negation alias "${noFlag}" for "${key}" conflicts with existing flag.`);
+			} else {
+				normalizedSpec.effectiveNegation = noFlag;
+				negationToKey.set(noFlag, key);
+				booleanNegations.push({
+					key,
+					positiveFlag: longFlag,
+					negativeFlag: noFlag
+				});
+			}
+		}
 		normalized.set(key, normalizedSpec);
 	}
 
-	return { flagToKey, normalized };
+	return {
+		ok: issues.length === 0,
+		flagToKey: Object.fromEntries(flagToKey),
+		normalized: Object.fromEntries(normalized),
+		booleanNegations,
+		issues
+	};
+};
+
+const normalizeDefaultValue = (
+	key: string,
+	value: unknown,
+	type: FlagType
+): FlagValue<FlagType> | Error | undefined => {
+	if (value === undefined) {
+		return undefined;
+	}
+	switch (type) {
+		case 'string':
+			if (typeof value !== 'string') {
+				return new TypeError(`Schema entry "${key}" default must be a string.`);
+			}
+			return value;
+		case 'boolean':
+			if (typeof value !== 'boolean') {
+				return new TypeError(`Schema entry "${key}" default must be a boolean.`);
+			}
+			return value;
+		case 'number':
+			if (typeof value !== 'number' || !Number.isFinite(value)) {
+				return new TypeError(`Schema entry "${key}" default must be a finite number.`);
+			}
+			return value;
+		case 'array':
+			if (!isStringArray(value)) {
+				return new TypeError(`Schema entry "${key}" default must be a string array.`);
+			}
+			return value;
+		default: {
+			const exhaustive: never = type;
+			return new TypeError(`Schema entry "${key}" has invalid type "${String(exhaustive)}".`);
+		}
+	}
 };
 
 const coerceStringArgs = (value: unknown): string[] | undefined => {
@@ -457,7 +573,13 @@ export const defineSchema = <T extends Schema>(schema: T): T => schema;
  * ```
  */
 export const parseArgs = <T extends Schema>(schema: T, options: ParseOptions = {}): ParseResult<T> => {
-	const { flagToKey, normalized } = validateSchema(schema);
+	const { flagToKey, booleanNegations, normalized, ok: schemaOk, issues: schemaIssues } = normalizeSchema(schema);
+	if (!schemaOk) {
+		throw new TypeError(schemaIssues.join('\n'));
+	}
+	const negationToKey = new Map<string, string>(booleanNegations.map((entry) => [entry.negativeFlag, entry.key]));
+	const normalizedMap = new Map<string, NormalizedSpec>(Object.entries(normalized));
+	const flagToKeyMap = new Map<string, string>(Object.entries(flagToKey));
 	const argv = options.argv !== undefined ? [ ...options.argv ] : resolveRuntimeArgv();
 	const allowUnknown = options.allowUnknown === true;
 	const stopAtDoubleDash = options.stopAtDoubleDash !== false;
@@ -468,7 +590,7 @@ export const parseArgs = <T extends Schema>(schema: T, options: ParseOptions = {
 	const unknown: string[] = [];
 	const rest: string[] = [];
 
-	for (const [key, spec] of normalized.entries()) {
+	for (const [key, spec] of normalizedMap.entries()) {
 		present[key] = false;
 		values[key] = cloneDefault(spec.default, spec.type);
 	}
@@ -494,30 +616,29 @@ export const parseArgs = <T extends Schema>(schema: T, options: ParseOptions = {
 		const rawToken = token;
 		const { flag, value: inlineValue } = splitInlineValue(token);
 
-		if (flag.startsWith('--no-') && !flagToKey.has(flag)) {
-			const base = `--${flag.slice(5)}`;
-			const baseKey = flagToKey.get(base);
-			if (baseKey !== undefined) {
-				const baseSpec = normalized.get(baseKey);
+		if (flag.startsWith('--no-') && !flagToKeyMap.has(flag)) {
+			const noAliasKey = negationToKey.get(flag);
+			if (noAliasKey !== undefined) {
+				const baseSpec = normalizedMap.get(noAliasKey);
 				if (baseSpec?.type === 'boolean' && baseSpec.allowNo !== false) {
-					if (present[baseKey] === true) {
+					if (present[noAliasKey] === true) {
 						pushIssue({
 							code: 'DUPLICATE',
 							severity: 'warning',
-							message: `Duplicate flag ${base}.`,
-							flag: base,
-							key: baseKey,
+							message: `Duplicate flag ${flag}.`,
+							flag,
+							key: noAliasKey,
 							index: i
 						});
 					}
-					present[baseKey] = true;
-					values[baseKey] = false;
+					present[noAliasKey] = true;
+					values[noAliasKey] = false;
 					continue;
 				}
 			}
 		}
 
-		const key = flagToKey.get(flag);
+		const key = flagToKeyMap.get(flag);
 		if (key === undefined) {
 			if (!allowUnknown) {
 				pushIssue({
@@ -533,7 +654,7 @@ export const parseArgs = <T extends Schema>(schema: T, options: ParseOptions = {
 			continue;
 		}
 
-		const spec = normalized.get(key);
+		const spec = normalizedMap.get(key);
 		if (spec === undefined) {
 			continue;
 		}
@@ -695,7 +816,7 @@ export const parseArgs = <T extends Schema>(schema: T, options: ParseOptions = {
 		}
 	}
 
-	for (const [key, spec] of normalized.entries()) {
+	for (const [key, spec] of normalizedMap.entries()) {
 		if (spec.required === true && present[key] !== true) {
 			const primaryFlag = spec.flags[0];
 			pushIssue({
@@ -708,7 +829,7 @@ export const parseArgs = <T extends Schema>(schema: T, options: ParseOptions = {
 		}
 	}
 
-	const ok = issues.every((issue) => issue.severity !== 'error');
+	const parseOk = issues.every((issue) => issue.severity !== 'error');
 
 	return {
 		values: values as ParsedValues<T>,
@@ -716,7 +837,7 @@ export const parseArgs = <T extends Schema>(schema: T, options: ParseOptions = {
 		rest,
 		unknown,
 		issues,
-		ok
+		ok: parseOk
 	};
 };
 
