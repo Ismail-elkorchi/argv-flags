@@ -8,6 +8,12 @@
 - Added effective boolean negation metadata for boolean long flags and derived `--no-*` parser support.
 <!-- release-notes:end -->
 
+## 1.0.5 - 2026-05-31
+
+- Added non-throwing schema normalization with structured issue reporting via `normalizeSchema`.
+- Added stricter flag grammar rejecting malformed tokens (`--`, whitespace, inline `=`, and explicit `--no-*` entries).
+- Added effective boolean negation metadata for boolean long flags and derived `--no-*` parser support.
+
 ## 1.0.4 - 2026-03-03
 
 - Rework README and docs map for faster first-use onboarding (tutorial/how-to/reference/explanation).
