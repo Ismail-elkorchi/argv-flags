@@ -3,7 +3,9 @@
 ## Unreleased
 
 <!-- release-notes:start -->
-- No entries yet.
+- Added non-throwing schema normalization with structured issue reporting via `normalizeSchema`.
+- Added stricter flag grammar rejecting malformed tokens (`--`, whitespace, inline `=`, and explicit `--no-*` entries).
+- Added effective boolean negation metadata for boolean long flags and derived `--no-*` parser support.
 <!-- release-notes:end -->
 
 ## 1.0.4 - 2026-03-03
