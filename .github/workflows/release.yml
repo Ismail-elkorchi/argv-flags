@@ -83,6 +83,17 @@ jobs:
         uses: denoland/setup-deno@667a34cdef165d8d2b2e98dde39547c9daac7282 # v2.0.4
         with:
           deno-version: ${{ steps.runtime-policy.outputs.deno_pinned }}
+      - name: Sync JSR version with npm package version
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          const jsrConfig = JSON.parse(fs.readFileSync('jsr.json', 'utf8'));
+          if (jsrConfig.version !== packageJson.version) {
+            jsrConfig.version = packageJson.version;
+            fs.writeFileSync('jsr.json', `${JSON.stringify(jsrConfig, null, 2)}\n`);
+          }
+          NODE
       - name: Install
         run: npm ci
       - name: Quality gates
