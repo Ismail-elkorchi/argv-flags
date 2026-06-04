@@ -9,16 +9,16 @@ const BOOLEAN_FALSE = new Set<string>(['false', '0', 'no', 'n', 'off']);
 /**
  * Supported schema value kinds for a flag.
  *
- * Use these literals in {@link FlagSpec.type} to declare how a logical option
+ * Use these literals in `FlagSpec.type` to declare how a logical option
  * should be parsed from argv tokens.
  */
 export type FlagType = 'string' | 'boolean' | 'number' | 'array';
 
 /**
- * Runtime value type mapped from a {@link FlagType}.
+ * Runtime value type mapped from a flag category.
  *
  * This conditional type drives the inferred `values` shape returned by
- * {@link parseArgs}.
+ * parseArgs.
  */
 export type FlagValue<T extends FlagType> = T extends 'string'
 	? string
@@ -46,15 +46,15 @@ export type FlagValue<T extends FlagType> = T extends 'string'
  * - `allowNo`: `true` for boolean flags
  */
 export interface FlagSpec<T extends FlagType = FlagType> {
-	/** Parsed value kind for this option. */
+	/** Controls argv coercion and default validation for this option. */
 	type: T;
 	/** Accepted CLI spellings (for example `-m`, `--mode`). */
 	flags: readonly string[];
-	/** Marks the option as required when `true`. */
+	/** Emits a `REQUIRED` issue when argv does not supply this flag. */
 	required?: boolean;
-	/** Fallback value used when the flag is not provided. */
+	/** Value copied into `values` when argv does not supply this flag. */
 	default?: FlagValue<T>;
-	/** Allows empty string/array values for string and array specs. */
+	/** Allows empty values for string and array specs. */
 	allowEmpty?: boolean;
 	/** Enables `--no-<flag>` negation for boolean specs. */
 	allowNo?: boolean;
@@ -73,8 +73,8 @@ export interface BooleanNegationMetadata {
 /**
  * Parser schema keyed by logical option names.
  *
- * Schema keys become the stable property names in {@link ParseResult.values},
- * {@link ParseResult.present}, and {@link ParseIssue.key}.
+ * Schema keys become the stable property names in parse results and issue
+ * payloads.
  */
 export type Schema = Record<string, FlagSpec>;
 
@@ -100,8 +100,8 @@ export type IssueCode =
 /**
  * Structured parser issue payload.
  *
- * Returned in {@link ParseResult.issues} for unknown flags, missing values,
- * invalid coercions, required-field failures, and duplicate-flag warnings.
+ * Returned for unknown flags, missing values, invalid coercions,
+ * required-field failures, and duplicate-flag warnings.
  */
 export interface ParseIssue {
 	/** Stable machine-readable issue code. */
@@ -128,9 +128,9 @@ export interface SchemaNormalizationResult {
 	normalized: Record<string, NormalizedSpec>;
 	/** Effective negation aliases for boolean long flags. */
 	booleanNegations: readonly BooleanNegationMetadata[];
-	/** Human-readable schema issues. */
+	/** Schema validation issues that would make parseArgs throw. */
 	issues: readonly string[];
-	/** Whether schema normalization succeeded. */
+	/** `true` when the normalized schema can be used for parsing. */
 	ok: boolean;
 }
 
@@ -198,7 +198,7 @@ export interface ParseResult<S extends Schema> {
 /**
  * JSON-serializable value variant for parse results.
  *
- * This is the value domain produced by {@link toJsonResult}.
+ * This is the value domain produced by toJsonResult.
  */
 export type JsonFlagValue = string | number | boolean | string[] | null;
 
@@ -501,7 +501,7 @@ const resolveRuntimeArgv = (): string[] => {
  * Identity helper that preserves schema typing for object literals.
  *
  * `defineSchema()` does not validate the schema eagerly. Structural validation
- * happens when {@link parseArgs} normalizes the schema before parsing.
+ * happens when parseArgs normalizes the schema before parsing.
  *
  * @example
  * ```ts
@@ -535,7 +535,9 @@ export const defineSchema = <T extends Schema>(schema: T): T => schema;
  * - `issues` contains warnings and errors with stable issue codes.
  * - `ok` is `true` only when no `"error"` issue exists.
  *
- * @throws {TypeError} If the schema is structurally invalid.
+ * @throws TypeError
+ *
+ * Thrown when the schema is structurally invalid.
  *
  * @example
  * ```ts
@@ -842,7 +844,7 @@ export const parseArgs = <T extends Schema>(schema: T, options: ParseOptions = {
 };
 
 /**
- * Default export alias for {@link parseArgs}.
+ * Default export alias for parseArgs.
  */
 export default parseArgs;
 
