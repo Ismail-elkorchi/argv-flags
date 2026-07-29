@@ -1,14 +1,3 @@
-/**
- * Goal: Demonstrate stable issue-code output on parse failures.
- * Prereqs:
- * - Run from repo root after `npm run build`.
- * Run:
- * - `node examples/structured-errors.mjs --retries not-a-number`
- * Expected output:
- * - Error JSON on stderr with `{ ok: false, issues }` and issue code such as `INVALID_VALUE`.
- * Safety notes:
- * - Offline example; no filesystem writes or network access.
- */
 import { defineSchema, parseArgs } from "../dist/index.js";
 
 const schema = defineSchema({

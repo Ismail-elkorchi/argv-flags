@@ -1,14 +1,3 @@
-/**
- * Goal: Show pass-through handling when `stopAtDoubleDash` is enabled.
- * Prereqs:
- * - Run from repo root after `npm run build`.
- * Run:
- * - `node examples/pass-through-double-dash.mjs --profile agent -- --trace --limit=2`
- * Expected output:
- * - JSON object with `{ ok: true, profile, rest }` where `rest` contains tokens after `--`.
- * Safety notes:
- * - Offline example; no network access.
- */
 import { defineSchema, parseArgs } from "../dist/index.js";
 
 const schema = defineSchema({
