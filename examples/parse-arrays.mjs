@@ -1,14 +1,3 @@
-/**
- * Goal: Show repeated array flags appending values in encounter order.
- * Prereqs:
- * - Run from repo root after `npm run build`.
- * Run:
- * - `node examples/parse-arrays.mjs --include src test --include docs`
- * Expected output:
- * - JSON object with `{ ok: true, include: ["src", "test", "docs"] }`.
- * Safety notes:
- * - Array defaults are cloned per parse call before new values append.
- */
 import { defineSchema, parseArgs } from "../dist/index.js";
 
 const schema = defineSchema({

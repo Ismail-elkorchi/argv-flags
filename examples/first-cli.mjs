@@ -1,15 +1,3 @@
-/**
- * Goal: Demonstrate a minimal schema-driven CLI with stable success/error JSON.
- * Prereqs:
- * - Run from repo root after `npm run build`.
- * Run:
- * - `node examples/first-cli.mjs --src input.txt --dest output.txt`
- * Expected output:
- * - Success JSON on stdout with `{ ok: true, values, rest, unknown }`.
- * - On invalid input, error JSON on stderr and exit code `2`.
- * Safety notes:
- * - Offline example; does not touch the network.
- */
 import { defineSchema, parseArgs } from "../dist/index.js";
 
 const schema = defineSchema({

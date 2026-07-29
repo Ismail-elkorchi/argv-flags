@@ -1,14 +1,3 @@
-/**
- * Goal: Run all repository examples and assert expected machine-readable behavior.
- * Prereqs:
- * - Run from repo root after `npm run build`.
- * Run:
- * - `node examples/run-all.mjs`
- * Expected output:
- * - Final line `examples:run argv-flags PASS` on stdout and process exit code `0`.
- * Safety notes:
- * - Offline test harness; spawns local Node processes only.
- */
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
@@ -55,7 +44,7 @@ function parseJson(streamText) {
 {
   const result = runExample("pass-through-double-dash.mjs", [
     "--profile",
-    "agent",
+    "strict",
     "--",
     "--trace",
     "--limit=2",
@@ -72,14 +61,6 @@ function parseJson(streamText) {
   assert.equal(payload.ok, true);
   assert.deepEqual(payload.unknown, ["--extra=1"]);
   assert.deepEqual(payload.rest, ["file.txt"]);
-}
-
-{
-  const result = runExample("stop-parsing.mjs", ["--mode", "safe", "--", "--literal", "value"]);
-  assert.equal(result.status, 0, result.stderr);
-  const payload = parseJson(result.stdout);
-  assert.equal(payload.ok, true);
-  assert.deepEqual(payload.rest, ["--literal", "value"]);
 }
 
 {

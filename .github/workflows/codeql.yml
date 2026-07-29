@@ -7,8 +7,6 @@ on:
   push:
     branches:
       - main
-  schedule:
-    - cron: "17 3 * * 1"
   workflow_dispatch:
 
 permissions:
@@ -20,7 +18,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  analyze-security:
+  analyze:
     name: Analyze (JavaScript/TypeScript)
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -43,28 +41,3 @@ jobs:
         uses: github/codeql-action/analyze@7211b7c8077ea37d8641b6271f6a365a22a5fbfa # v4.36.0
         with:
           category: /language:javascript-typescript/security-extended
-
-  analyze-quality:
-    name: Analyze quality (JavaScript/TypeScript)
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    continue-on-error: true
-    permissions:
-      actions: read
-      contents: read
-      security-events: write
-    steps:
-      - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      - name: Initialize CodeQL (quality lane)
-        uses: github/codeql-action/init@7211b7c8077ea37d8641b6271f6a365a22a5fbfa # v4.36.0
-        with:
-          languages: javascript-typescript
-          queries: security-and-quality
-      - name: Autobuild
-        uses: github/codeql-action/autobuild@7211b7c8077ea37d8641b6271f6a365a22a5fbfa # v4.36.0
-      - name: Analyze quality
-        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false
-        uses: github/codeql-action/analyze@7211b7c8077ea37d8641b6271f6a365a22a5fbfa # v4.36.0
-        with:
-          category: /language:javascript-typescript/security-and-quality

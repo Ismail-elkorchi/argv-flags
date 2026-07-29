@@ -1,15 +1,3 @@
-/**
- * Goal: Show how unknown flags are captured for inspection in wrapper CLIs.
- * Prereqs:
- * - Run from repo root after `npm run build`.
- * Run:
- * - `node examples/handle-unknown-flags.mjs --mode safe --extra=1 file.txt`
- * Expected output:
- * - JSON object with `{ ok: true, mode, unknown, rest }`.
- * Safety notes:
- * - `unknown` preserves unknown flag tokens, but not exact downstream argv
- *   ordering. Use `--` plus `rest` when you need exact pass-through ordering.
- */
 import { defineSchema, parseArgs } from "../dist/index.js";
 
 const schema = defineSchema({

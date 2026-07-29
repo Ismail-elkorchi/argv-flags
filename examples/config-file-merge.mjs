@@ -1,14 +1,3 @@
-/**
- * Goal: Show merging defaults + config file + CLI overrides with deterministic precedence.
- * Prereqs:
- * - Run from repo root after `npm run build`.
- * Run:
- * - `node examples/config-file-merge.mjs --mode strict --retries 7 --verbose`
- * Expected output:
- * - JSON object with `{ ok: true, merged }` where CLI values override config/defaults.
- * Safety notes:
- * - Offline example; no filesystem or network access.
- */
 import { defineSchema, parseArgs } from "../dist/index.js";
 
 const defaults = {

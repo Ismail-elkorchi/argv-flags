@@ -58,14 +58,6 @@ console.log(result.values.src, result.values.dest);
 - [Tutorial: first CLI with exit codes](https://github.com/Ismail-elkorchi/argv-flags/blob/main/docs/tutorial/first-cli.md)
 - [Reference: options](https://github.com/Ismail-elkorchi/argv-flags/blob/main/docs/reference/options.md)
 
-## Verification
-
-```sh
-npm run examples:run
-npm run check:fast
-npm run check
-```
-
 ## License
 
 MIT
