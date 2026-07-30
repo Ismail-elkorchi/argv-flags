@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+## 2.0.0 - 2026-07-30
+
+- Replaced the public API with a compiled `createParser()` facade and a
+  discriminated parse result.
+- Reworked option definitions so TypeScript rejects invalid defaults,
+  contradictory presence rules, and unsupported properties.
+- Made boolean negation explicit and repeatable string values consume one
+  argument per occurrence.
+- Defined boolean-only short clusters, exact value consumption, scalar
+  duplicate errors, and separate post-`--` arguments.
+- Made successful results the only results that expose values; failed results
+  expose structured diagnostics without partial values or defaults.
+- Added structured `DefinitionError` diagnostics and immutable compiled lookup
+  snapshots.
+- Preserved unknown flags with their raw argument, parsed flag, and original
+  index.
+- Added offline installed-package tests for Node, Deno, and Bun.
+- Removed the public normalization and JSON Schema surfaces.
+- Standardized argument, flag, option, value, and positional terminology.
+- See `BREAKING_CHANGES.md` for migration guidance.
+
 ## 1.0.5 - 2026-05-31
 
 - Added non-throwing schema normalization with structured issue reporting via `normalizeSchema`.

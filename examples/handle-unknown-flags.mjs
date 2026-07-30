@@ -1,26 +1,26 @@
-import { defineSchema, parseArgs } from "../dist/index.js";
+import { createParser } from "../dist/index.js";
 
-const schema = defineSchema({
+const parser = createParser({
   mode: { type: "string", flags: ["--mode"], required: true },
 });
 
-const result = parseArgs(schema, {
-  argv: process.argv.slice(2),
-  allowUnknown: true,
+const result = parser.parse({
+  args: process.argv.slice(2),
+  allowUnknownFlags: true,
 });
 
-if (!result.ok) {
-  process.stderr.write(`${JSON.stringify({ ok: false, issues: result.issues }, null, 2)}\n`);
+if (!result.success) {
+  process.stderr.write(`${JSON.stringify({ success: false, issues: result.issues }, null, 2)}\n`);
   process.exit(2);
 }
 
 process.stdout.write(
   `${JSON.stringify(
     {
-      ok: true,
+      success: true,
       mode: result.values.mode,
-      unknown: result.unknown,
-      rest: result.rest,
+      unknownArguments: result.unknownArguments,
+      positionals: result.positionals,
     },
     null,
     2,

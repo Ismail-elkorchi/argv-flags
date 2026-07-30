@@ -1,7 +1,7 @@
 import { createParser } from "../dist/index.js";
 
 const parser = createParser({
-  profile: { type: "string", flags: ["--profile"], default: "strict" },
+  include: { type: "string", flags: ["--include"], multiple: true },
 });
 
 const result = parser.parse({
@@ -17,8 +17,7 @@ process.stdout.write(
   `${JSON.stringify(
     {
       success: true,
-      profile: result.values.profile,
-      argumentsAfterDoubleDash: result.argumentsAfterDoubleDash,
+      include: result.values.include,
     },
     null,
     2,

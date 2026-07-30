@@ -1,18 +1,23 @@
-import { defineSchema, parseArgs } from "../dist/index.js";
+import { createParser } from "../dist/index.js";
 
-const schema = defineSchema({
+const parser = createParser({
   src: { type: "string", flags: ["--src"], required: true },
   dest: { type: "string", flags: ["--dest"], required: true },
-  verbose: { type: "boolean", flags: ["--verbose"], default: false },
+  verbose: {
+    type: "boolean",
+    flags: ["--verbose"],
+    negatedFlag: "--no-verbose",
+    default: false,
+  },
 });
 
-const result = parseArgs(schema, { argv: process.argv.slice(2) });
+const result = parser.parse({ args: process.argv.slice(2) });
 
-if (!result.ok) {
+if (!result.success) {
   process.stderr.write(
     `${JSON.stringify(
       {
-        ok: false,
+        success: false,
         issues: result.issues,
       },
       null,
@@ -25,10 +30,11 @@ if (!result.ok) {
 process.stdout.write(
   `${JSON.stringify(
     {
-      ok: true,
+      success: true,
       values: result.values,
-      rest: result.rest,
-      unknown: result.unknown,
+      positionals: result.positionals,
+      argumentsAfterDoubleDash: result.argumentsAfterDoubleDash,
+      unknownArguments: result.unknownArguments,
     },
     null,
     2,

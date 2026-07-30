@@ -1,20 +1,36 @@
-# Tutorial: first CLI with exit codes
+# Build a CLI with exit codes
 
-The included example parses `--src` and `--dest`, writes JSON, and maps invalid
-arguments to exit code `2`:
+Create and reuse a parser:
+
+```ts
+import { createParser } from "argv-flags";
+
+const parser = createParser({
+  source: { type: "string", flags: ["--source"], required: true },
+  destination: {
+    type: "string",
+    flags: ["--destination"],
+    required: true,
+  },
+});
+
+const result = parser.parse();
+
+if (!result.success) {
+  process.stderr.write(`${JSON.stringify(result.issues, null, 2)}\n`);
+  process.exitCode = 2;
+} else {
+  process.stdout.write(
+    `${JSON.stringify({ values: result.values }, null, 2)}\n`,
+  );
+}
+```
+
+Run the repository example:
 
 ```sh
 node examples/first-cli.mjs --src input.txt --dest output.txt
 ```
 
-To see the failure path, omit required `--dest`:
-
-```sh
-node examples/first-cli.mjs --src input.txt
-echo $?
-```
-
-The successful command prints parsed `values` with `ok: true`. The failure
-command writes structured `issues` to stderr and exits with status `2`. Branch
-on `issues[].code`, such as `REQUIRED` or `INVALID_VALUE`; messages are for
-people, not program logic.
+Omitting `--dest` produces `MISSING_REQUIRED_OPTION` and exit status `2`.
+Branch on issue codes rather than human-readable messages.
