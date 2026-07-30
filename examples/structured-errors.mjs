@@ -1,18 +1,18 @@
-import { defineSchema, parseArgs } from "../dist/index.js";
+import { createParser } from "../dist/index.js";
 
-const schema = defineSchema({
+const parser = createParser({
   retries: { type: "number", flags: ["--retries"], required: true },
 });
 
-const result = parseArgs(schema, {
-  argv: process.argv.slice(2),
+const result = parser.parse({
+  args: process.argv.slice(2),
 });
 
-if (!result.ok) {
+if (!result.success) {
   process.stderr.write(
     `${JSON.stringify(
       {
-        ok: false,
+        success: false,
         issues: result.issues,
       },
       null,
@@ -25,7 +25,7 @@ if (!result.ok) {
 process.stdout.write(
   `${JSON.stringify(
     {
-      ok: true,
+      success: true,
       retries: result.values.retries,
     },
     null,

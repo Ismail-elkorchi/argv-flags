@@ -1,7 +1,7 @@
 {
   "name": "argv-flags",
-  "version": "1.0.5",
-  "description": "Schema-driven CLI flag parser with stable issue codes and machine-readable results.",
+  "version": "2.0.0",
+  "description": "Typed cross-runtime CLI option parser with structured issues.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -9,24 +9,24 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
-    },
-    "./schema/parse-result.schema.json": "./schema/parse-result.schema.json"
+    }
   },
   "files": [
     "CHANGELOG.md",
+    "BREAKING_CHANGES.md",
     "LICENSE",
     "README.md",
-    "dist",
-    "schema"
+    "dist"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "prepare": "npm run build",
     "examples:run": "node ./examples/run-all.mjs",
     "lint": "eslint .",
-    "test": "npm run build && npm run lint && node --test",
-    "test:runtimes": "node ./test/runtime-smoke.mjs && deno run ./test/runtime-smoke.mjs && bun ./test/runtime-smoke.mjs",
-    "check": "node ./scripts/workflow-policy-check.mjs && npm run test && npm run docs:lint:jsr && npm run docs:test:jsr && npm run test:runtimes && npm run examples:run",
+    "test:types": "tsc -p tsconfig.type-tests.json",
+    "test": "npm run build && npm run lint && npm run test:types && node --test",
+    "test:consumers": "node ./scripts/packed-consumers.mjs",
+    "check": "node ./scripts/workflow-policy-check.mjs && npm run test && npm run docs:lint:jsr && npm run docs:test:jsr && npm run test:consumers && npm run examples:run",
     "docs:lint:jsr": "deno doc --lint src/index.ts",
     "docs:test:jsr": "deno test --doc --no-check src/index.ts",
     "jsr:dry": "deno publish --dry-run --allow-dirty",
@@ -56,7 +56,6 @@
     "@types/node": "^26.1.2",
     "@typescript-eslint/eslint-plugin": "^8.65.0",
     "@typescript-eslint/parser": "^8.65.0",
-    "ajv": "^8.20.0",
     "eslint": "^10.8.0",
     "eslint-plugin-n": "^18.2.2",
     "eslint-plugin-promise": "^7.3.0",

@@ -21,7 +21,7 @@ const run = async () => {
   }
 
   process.stdout.write(
-    `release-gate: ok tag=${tagName} package=${packageJson.version} changelog=present\n`
+    `release-gate: PASS tag=${tagName} package=${packageJson.version} changelog=found\n`
   );
 };
 

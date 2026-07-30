@@ -1,10 +1,6 @@
 # argv-flags
 
-Schema-driven CLI flag parser with stable issue codes and machine-readable results.
-
-## What it is
-
-`argv-flags` parses command-line tokens against an explicit schema and returns typed values plus stable issue codes.
+Typed CLI option parsing for Node, Deno, and Bun.
 
 ## Install
 
@@ -16,47 +12,81 @@ deno add jsr:@ismail-elkorchi/argv-flags
 ## Quickstart
 
 ```ts
-import { defineSchema, parseArgs } from "argv-flags";
+import { createParser } from "argv-flags";
 
-const schema = defineSchema({
-  src: { type: "string", flags: ["--src"], required: true },
-  dest: { type: "string", flags: ["--dest"], required: true },
-  verbose: { type: "boolean", flags: ["--verbose"], default: false },
+const parser = createParser({
+  source: { type: "string", flags: ["-s", "--source"], required: true },
+  retries: { type: "number", flags: ["--retries"], default: 2 },
+  verbose: {
+    type: "boolean",
+    flags: ["-v", "--verbose"],
+    negatedFlag: "--no-verbose",
+    default: false,
+  },
+  include: {
+    type: "string",
+    flags: ["--include"],
+    multiple: true,
+  },
 });
 
-const result = parseArgs(schema, { argv: ["--src", "a.txt", "--dest", "b.txt"] });
+const result = parser.parse({
+  args: ["--source", "input.txt", "--include=src", "-v"],
+});
 
-if (!result.ok) {
+if (result.success) {
+  console.log(result.values.source);
+  console.log(result.values.include);
+} else {
   console.error(result.issues);
-  process.exitCode = 1;
+  process.exitCode = 2;
 }
-
-console.log(result.values.src, result.values.dest);
 ```
 
-## When not to use
+`createParser()` validates and snapshots the definitions once. The returned
+parser can parse any number of argument arrays without rebuilding its immutable
+flag lookup.
 
-- You only need ad-hoc parsing for a one-off script.
-- You need subcommand routing or interactive prompts.
-- You target CommonJS or Node < 24.
+## Grammar
 
-## When to use
+- Long value flags accept `--name value` and `--name=value`.
+- Short value flags accept `-n value`; `-n=value` is invalid.
+- Short clusters such as `-abc` contain boolean flags only.
+- Boolean flags never consume the following argument and reject inline values.
+- Negation uses an explicitly declared `negatedFlag`.
+- Every recognized value-taking occurrence consumes exactly one value.
+- A separate value may begin with `-`; only `--` interrupts value consumption.
+- Multiple strings require one flag occurrence per value.
+- Repeating a scalar option is an error.
+- `--` always ends parsing. Earlier positionals and later arguments are returned
+  separately.
+- Defaults apply only when an option is absent.
+- Failed results contain diagnostics and never expose values or defaults.
 
-- You need deterministic parsing with stable issue codes.
-- You want the same schema on Node, Deno, and Bun.
-- You need machine-readable results for automation.
+Unknown flags are errors unless `allowUnknownFlags` is enabled. Collected
+unknown flags retain the complete argument, parsed flag, and original index.
+
+## Terminology
+
+- An **argument** is one raw string in the input `args` array.
+- A **flag** is a literal CLI name such as `-v` or `--verbose`.
+- An **option** is one logical configured value selected by one or more flags.
+- A **value** is the parsed string, number, boolean, or string array belonging
+  to an option.
+- A **positional** is an argument encountered before `--` that was not consumed.
 
 ## Compatibility
 
-- Module system: ESM-only.
-- Runtimes: Node `>=24`, current Deno, current Bun.
-- JSON schema workflows use `readFileSync(...); JSON.parse(...)` (no JSON import attributes required).
+- ESM only.
+- Node `>=24`, current Deno, and current Bun.
+- No runtime dependencies.
 
 ## Documentation
 
-- [Docs index](https://github.com/Ismail-elkorchi/argv-flags/blob/main/docs/index.md)
-- [Tutorial: first CLI with exit codes](https://github.com/Ismail-elkorchi/argv-flags/blob/main/docs/tutorial/first-cli.md)
-- [Reference: options](https://github.com/Ismail-elkorchi/argv-flags/blob/main/docs/reference/options.md)
+- [Options, grammar, and parse settings](docs/reference/options.md)
+- [Results and diagnostics](docs/reference/parse-result.md)
+- [First CLI tutorial](docs/tutorial/first-cli.md)
+- [Breaking changes](BREAKING_CHANGES.md)
 
 ## License
 

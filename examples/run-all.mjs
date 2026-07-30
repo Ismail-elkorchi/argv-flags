@@ -20,7 +20,7 @@ function parseJson(streamText) {
   const result = runExample("first-cli.mjs", ["--src", "input.txt", "--dest", "output.txt"]);
   assert.equal(result.status, 0, result.stderr);
   const payload = parseJson(result.stdout);
-  assert.equal(payload.ok, true);
+  assert.equal(payload.success, true);
   assert.equal(payload.values.src, "input.txt");
   assert.equal(payload.values.dest, "output.txt");
 }
@@ -29,7 +29,7 @@ function parseJson(streamText) {
   const result = runExample("first-cli.mjs", ["--src", "input.txt"]);
   assert.equal(result.status, 2);
   const payload = parseJson(result.stderr);
-  assert.equal(payload.ok, false);
+  assert.equal(payload.success, false);
 }
 
 {
@@ -51,23 +51,32 @@ function parseJson(streamText) {
   ]);
   assert.equal(result.status, 0, result.stderr);
   const payload = parseJson(result.stdout);
-  assert.deepEqual(payload.rest, ["--trace", "--limit=2"]);
+  assert.deepEqual(payload.argumentsAfterDoubleDash, ["--trace", "--limit=2"]);
 }
 
 {
   const result = runExample("handle-unknown-flags.mjs", ["--mode", "safe", "--extra=1", "file.txt"]);
   assert.equal(result.status, 0, result.stderr);
   const payload = parseJson(result.stdout);
-  assert.equal(payload.ok, true);
-  assert.deepEqual(payload.unknown, ["--extra=1"]);
-  assert.deepEqual(payload.rest, ["file.txt"]);
+  assert.equal(payload.success, true);
+  assert.deepEqual(payload.unknownArguments, [
+    { argument: "--extra=1", flag: "--extra", index: 2 },
+  ]);
+  assert.deepEqual(payload.positionals, ["file.txt"]);
 }
 
 {
-  const result = runExample("parse-arrays.mjs", ["--include", "src", "test", "--include", "docs"]);
+  const result = runExample("parse-repeated-values.mjs", [
+    "--include",
+    "src",
+    "--include",
+    "test",
+    "--include",
+    "docs",
+  ]);
   assert.equal(result.status, 0, result.stderr);
   const payload = parseJson(result.stdout);
-  assert.equal(payload.ok, true);
+  assert.equal(payload.success, true);
   assert.deepEqual(payload.include, ["src", "test", "docs"]);
 }
 
@@ -75,8 +84,8 @@ function parseJson(streamText) {
   const result = runExample("structured-errors.mjs", ["--retries", "not-a-number"]);
   assert.equal(result.status, 1);
   const payload = parseJson(result.stderr);
-  assert.equal(payload.ok, false);
-  assert.equal(payload.issues[0]?.code, "INVALID_VALUE");
+  assert.equal(payload.success, false);
+  assert.equal(payload.issues[0]?.code, "INVALID_FLAG_VALUE");
 }
 
 process.stdout.write("examples:run argv-flags PASS\n");
