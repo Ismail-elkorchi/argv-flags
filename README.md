@@ -6,6 +6,7 @@ Typed CLI option parsing for Node, Deno, and Bun.
 
 ```sh
 npm install argv-flags
+bun add argv-flags
 deno add jsr:@ismail-elkorchi/argv-flags
 ```
 
@@ -30,9 +31,7 @@ const parser = createParser({
   },
 });
 
-const result = parser.parse({
-  args: ["--source", "input.txt", "--include=src", "-v"],
-});
+const result = parser.parse();
 
 if (result.success) {
   console.log(result.values.source);
@@ -45,7 +44,8 @@ if (result.success) {
 
 `createParser()` validates and snapshots the definitions once. The returned
 parser can parse any number of argument arrays without rebuilding its immutable
-flag lookup.
+flag lookup. `parse()` reads the current runtime's arguments; pass
+`{ args: [...] }` when parsing an explicit array.
 
 ## Grammar
 
@@ -78,7 +78,7 @@ unknown flags retain the complete argument, parsed flag, and original index.
 ## Compatibility
 
 - ESM only.
-- Node `>=24`, current Deno, and current Bun.
+- Node `>=24`, Deno, and Bun.
 - No runtime dependencies.
 
 ## Documentation
