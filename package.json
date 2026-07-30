@@ -1,7 +1,7 @@
 {
   "name": "argv-flags",
   "version": "2.0.0",
-  "description": "Typed cross-runtime CLI option parser with structured issues.",
+  "description": "Typed cross-runtime command-line option parser with structured diagnostics.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -39,8 +39,12 @@
   "keywords": [
     "argv",
     "cli",
+    "command-line",
+    "argument-parser",
     "flags",
-    "parser"
+    "options",
+    "parser",
+    "typescript"
   ],
   "author": "Ismail El Korchi",
   "license": "MIT",
