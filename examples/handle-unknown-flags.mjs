@@ -5,8 +5,8 @@ const parser = createParser({
 });
 
 const result = parser.parse({
-  args: process.argv.slice(2),
-  allowUnknownFlags: true,
+  argv: process.argv.slice(2),
+  unknownFlagPolicy: "collect",
 });
 
 if (!result.success) {
@@ -19,7 +19,7 @@ process.stdout.write(
     {
       success: true,
       mode: result.values.mode,
-      unknownArguments: result.unknownArguments,
+      unknownFlags: result.unknownFlags,
       positionals: result.positionals,
     },
     null,

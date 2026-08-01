@@ -1,181 +1,321 @@
 import {
 	DefinitionError,
 	createParser,
+	value,
+	type CustomValueParserProtocol,
 	type DefinitionIssue,
+	type InferValues,
 	type ParseIssue,
-	type ParseResult,
-	type UnknownArgument
+	type ParserResult,
+	type UnknownFlag,
+	type ValueParseContext
 } from 'argv-flags';
 
-const parser = createParser({
-	source: { type: 'string', flags: ['--source'], required: true },
-	mode: { type: 'string', flags: ['--mode'], default: 'safe' },
-	label: { type: 'string', flags: ['--label'] },
-	verbose: {
-		type: 'boolean',
-		flags: ['--verbose'],
-		negatedFlag: '--no-verbose'
-	},
-	include: {
-		type: 'string',
-		flags: ['--include'],
-		multiple: true
-	}
-});
-
-const result: ParseResult<{
-	readonly source: {
-		readonly type: 'string';
-		readonly flags: readonly ['--source'];
-		readonly required: true;
-	};
-	readonly mode: {
-		readonly type: 'string';
-		readonly flags: readonly ['--mode'];
-		readonly default: 'safe';
-	};
-	readonly label: {
-		readonly type: 'string';
-		readonly flags: readonly ['--label'];
-	};
-	readonly verbose: {
-		readonly type: 'boolean';
-		readonly flags: readonly ['--verbose'];
-		readonly negatedFlag: '--no-verbose';
-	};
-	readonly include: {
-		readonly type: 'string';
-		readonly flags: readonly ['--include'];
-		readonly multiple: true;
-	};
-}> = parser.parse({ args: [] });
-
-if (result.success) {
-	const source: string = result.values.source;
-	const mode: string = result.values.mode;
-	const include: string[] = result.values.include;
-	const label: string | undefined = result.values.label;
-	const verbose: boolean | undefined = result.values.verbose;
-	void source;
-	void mode;
-	void include;
-	void label;
-	void verbose;
-} else {
-	const issues: ParseIssue[] = result.issues;
-	void issues;
+interface Identifier {
+	readonly text: string;
 }
 
-type SuccessResult = Extract<typeof result, { success: true }>;
-type FailureResult = Extract<typeof result, { success: false }>;
-type AssertTrue<Value extends true> = Value;
-type _SuccessHasNoIssues = AssertTrue<
-	'issues' extends keyof SuccessResult ? false : true
->;
-type _FailureHasNoValues = AssertTrue<
-	'values' extends keyof FailureResult ? false : true
->;
-const successHasNoIssues: _SuccessHasNoIssues = true;
-const failureHasNoValues: _FailureHasNoValues = true;
-void successHasNoIssues;
-void failureHasNoValues;
-
-const unknownArgument: UnknownArgument = {
-	argument: '--other=1',
-	flag: '--other',
-	index: 0
+const identifierProtocol: CustomValueParserProtocol<Identifier> = {
+	parse(raw) {
+		return raw.startsWith('id:')
+			? { success: true, value: { text: raw.slice(3) } }
+			: { success: false, message: 'Expected an id: prefix.' };
+	},
+	accepts(candidate): candidate is Identifier {
+		return (
+			typeof candidate === 'object' &&
+			candidate !== null &&
+			'text' in candidate &&
+			typeof candidate.text === 'string'
+		);
+	},
+	snapshot(candidate) {
+		return { text: candidate.text };
+	}
 };
-void unknownArgument;
+const identifier = value.custom(identifierProtocol);
 
-const parseIssue: ParseIssue = {
+const parser = createParser({
+	source: { type: 'string', flags: ['-s', '--source'], required: true },
+	mode: {
+		type: value.choice(['auto', 'always', 'off']),
+		flags: ['--mode'],
+		default: 'auto'
+	},
+	label: { type: value.string({ empty: 'allow' }), flags: ['--label'] },
+	retries: {
+		type: value.integer({ minimum: 0 }),
+		flags: ['--retries'],
+		default: 2
+	},
+	ratio: { type: value.number(), flags: ['--ratio'] },
+	verbose: {
+		type: 'boolean',
+		flags: ['-v', '--verbose'],
+		falseFlags: ['--no-verbose']
+	},
+	include: {
+		type: identifier,
+		flags: ['--include'],
+		multiple: true
+	},
+	color: {
+		type: value.choice(['auto', 'always', 'never']),
+		flags: ['--color'],
+		valueMode: 'optional-inline',
+		implicitValue: 'auto'
+	},
+	verbosity: { type: 'count', flags: ['-q'] }
+});
+
+const result = parser.parse({ argv: [] });
+if (result.success) {
+	const source: string = result.values.source;
+	const mode: 'auto' | 'always' | 'off' = result.values.mode;
+	const label: string | undefined = result.values.label;
+	const retries: number = result.values.retries;
+	const ratio: number | undefined = result.values.ratio;
+	const verbose: boolean | undefined = result.values.verbose;
+	const include: readonly Identifier[] = result.values.include;
+	const color: 'auto' | 'always' | 'never' | undefined = result.values.color;
+	const verbosity: number = result.values.verbosity;
+	void source;
+	void mode;
+	void label;
+	void retries;
+	void ratio;
+	void verbose;
+	void include;
+	void color;
+	void verbosity;
+	// @ts-expect-error issues exist only on failure
+	void result.issues;
+} else {
+	const issues: readonly ParseIssue[] = result.issues;
+	void issues;
+	// @ts-expect-error values exist only on success
+	void result.values;
+}
+
+type Values = InferValues<typeof parser>;
+type Result = ParserResult<typeof parser>;
+const values: Values | undefined = result.success ? result.values : undefined;
+const completeResult: Result = result;
+void values;
+void completeResult;
+
+const unknownFlag: UnknownFlag = {
+	argvElement: '--other=value',
+	flag: '--other',
+	argvIndex: 3,
+	inlineValue: 'value'
+};
+void unknownFlag;
+
+const unknownIssue: ParseIssue = {
 	code: 'UNKNOWN_FLAG',
-	message: 'Unknown flag "--other".',
+	message: 'Unknown flag.',
 	flag: '--other',
-	argument: '--other=1',
-	index: 0
+	argvElement: '--other',
+	argvIndex: 0,
+	suggestions: ['--other-name']
 };
-void parseIssue;
+void unknownIssue;
+
+const invalidValueIssue: ParseIssue = {
+	code: 'INVALID_OPTION_VALUE',
+	message: 'Invalid value.',
+	option: 'mode',
+	flag: '--mode',
+	argvElement: '--mode=bad',
+	argvIndex: 0,
+	rawValue: 'bad',
+	valueArgvIndex: 0,
+	inline: true
+};
+void invalidValueIssue;
 
 const definitionIssue: DefinitionIssue = {
-	code: 'UNSUPPORTED_DEFINITION_PROPERTY',
-	message: 'Unsupported.',
+	code: 'UNSUPPORTED_OPTION_PROPERTY',
+	message: 'Unsupported property.',
 	option: 'source',
-	property: 'require'
+	property: 'typo'
 };
-void definitionIssue;
-
 const definitionError: DefinitionError = new DefinitionError([definitionIssue]);
 void definitionError;
 
-createParser({
-	// @ts-expect-error string options require string defaults
-	invalid: {
-		type: 'string',
-		flags: ['--invalid'],
-		default: 1
+const protocol: CustomValueParserProtocol<Identifier> = {
+	parse(raw, context: ValueParseContext) {
+		void context;
+		return { success: true, value: { text: raw } };
+	},
+	accepts(candidate): candidate is Identifier {
+		return typeof candidate === 'object' && candidate !== null && 'text' in candidate;
+	}
+};
+value.custom(protocol);
+
+const inlineCustom = value.custom({
+	parse(raw) {
+		return { success: true, value: { length: raw.length } };
+	},
+	accepts(candidate): candidate is { readonly length: number } {
+		return (
+			typeof candidate === 'object' &&
+			candidate !== null &&
+			'length' in candidate &&
+			typeof candidate.length === 'number'
+		);
 	}
 });
+const inlineCustomParser = createParser({
+	item: { type: inlineCustom, flags: ['--item'], required: true }
+});
+const inlineCustomResult = inlineCustomParser.parse({ argv: ['--item=value'] });
+if (inlineCustomResult.success) {
+	const length: number = inlineCustomResult.values.item.length;
+	void length;
+}
+
+const invalidStringDefault = {
+	invalid: { type: 'string', flags: ['--invalid'], default: 1 }
+} as const;
+// @ts-expect-error string defaults must be strings
+createParser(invalidStringDefault);
 
 createParser({
 	invalid: {
 		type: 'boolean',
 		flags: ['--invalid'],
-		// @ts-expect-error allowEmpty belongs only to string options
-		allowEmpty: true
+		// @ts-expect-error falseFlags belong to booleans but valueMode does not
+		valueMode: 'required'
 	}
 });
 
-createParser({
+const invalidRequiredDefault = {
 	invalid: {
-		type: 'string',
-		flags: ['--invalid'],
-		// @ts-expect-error unsupported properties are rejected
-		require: true
-	}
-});
-
-const definitionsWithAnUnknownField = {
-	source: {
-		type: 'string',
-		flags: ['--source'],
-		require: true
-	}
-} as const;
-// @ts-expect-error closed definitions reject unknown fields through variables
-createParser(definitionsWithAnUnknownField);
-
-createParser({
-	invalid: {
-		type: 'string',
-		// @ts-expect-error every option needs at least one flag
-		flags: []
-	}
-});
-
-createParser({
-	// @ts-expect-error required options cannot define a default
-	invalid: {
-		type: 'string',
+		type: 'integer',
 		flags: ['--invalid'],
 		required: true,
-		default: 'fallback'
+		default: 1
 	}
-});
+} as const;
+// @ts-expect-error required options cannot define defaults
+createParser(invalidRequiredDefault);
+
+const invalidRequiredMultipleDefault = {
+	invalid: {
+		type: 'string',
+		flags: ['--invalid'],
+		multiple: true,
+		required: true,
+		default: ['fallback']
+	}
+} as const;
+// @ts-expect-error required multiple options cannot define defaults
+createParser(invalidRequiredMultipleDefault);
 
 createParser({
 	invalid: {
-		// @ts-expect-error array is not an option type
-		type: 'array',
-		flags: ['--invalid']
+		type: 'number',
+		flags: ['--invalid'],
+		multiple: true,
+		// @ts-expect-error multiple options do not support repeat policies
+		repeat: 'last'
 	}
 });
 
-// @ts-expect-error parse settings use args, not argv
-parser.parse({ argv: [] });
-
-const settingsWithAnUnknownField = {
-	args: [],
-	unknown: true
+const missingImplicitValue = {
+	invalid: {
+		type: 'string',
+		flags: ['--invalid'],
+		valueMode: 'optional-inline'
+	}
 } as const;
+// @ts-expect-error optional-inline mode requires an implicit value
+createParser(missingImplicitValue);
+
+const invalidImplicitValue = {
+	invalid: {
+		type: 'integer',
+		flags: ['--invalid'],
+		valueMode: 'optional-inline',
+		implicitValue: 'one'
+	}
+} as const;
+// @ts-expect-error implicit value must match the parser output
+createParser(invalidImplicitValue);
+
+const implicitValueInRequiredMode = {
+	invalid: {
+		type: 'string',
+		flags: ['--invalid'],
+		implicitValue: 'value'
+	}
+} as const;
+// @ts-expect-error required mode cannot define an implicit value
+createParser(implicitValueInRequiredMode);
+
+createParser({
+	invalid: {
+		type: 'count',
+		// @ts-expect-error flags require a dash-prefixed spelling
+		flags: ['invalid']
+	}
+});
+
+const definitionsWithUnknownProperty = {
+	source: { type: 'string', flags: ['--source'], typo: true }
+} as const;
+// @ts-expect-error closed definitions reject extras through variables
+createParser(definitionsWithUnknownProperty);
+
+// @ts-expect-error parse settings are closed inline
+parser.parse({ argv: [], typo: true });
+
+const settingsWithUnknownProperty = { argv: [], typo: true } as const;
 // @ts-expect-error parse settings are closed through variables
-parser.parse(settingsWithAnUnknownField);
+parser.parse(settingsWithUnknownProperty);
+
+// @ts-expect-error the unknown-flag policy has an explicit policy name
+parser.parse({ unknownFlags: 'collect' });
+
+// @ts-expect-error flag placement does not use option terminology
+parser.parse({ optionPlacement: 'before-positionals' });
+
+// @ts-expect-error exact optional properties reject explicit undefined
+parser.parse({ argv: undefined });
+
+// @ts-expect-error value settings are closed inline
+value.string({ empty: 'allow', typo: true });
+
+const valueSettingsWithUnknownProperty = { minimum: 0, typo: true } as const;
+// @ts-expect-error value settings are closed through variables
+value.integer(valueSettingsWithUnknownProperty);
+
+const protocolWithUnknownProperty = {
+	parse(raw: string) {
+		return { success: true, value: raw } as const;
+	},
+	accepts(candidate: unknown): candidate is string {
+		return typeof candidate === 'string';
+	},
+	typo: true
+};
+// @ts-expect-error custom protocols are closed through variables
+value.custom(protocolWithUnknownProperty);
+
+value.custom({
+	parse(raw) {
+		return { success: true, value: raw };
+	},
+	accepts(candidate): candidate is string {
+		return typeof candidate === 'string';
+	},
+	// @ts-expect-error custom protocols are closed inline
+	typo: true
+});
+
+// @ts-expect-error diagnostic codes are closed
+const openIssueCode: ParseIssue = { code: 'OTHER', message: 'Other.' };
+void openIssueCode;

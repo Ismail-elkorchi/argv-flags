@@ -2,13 +2,31 @@
 
 ## Unreleased
 
+## 3.0.0 - 2026-08-01
+
+- Added typed value parsers for configured strings, bounded decimal numbers,
+  safe integers, literal choices, and synchronous custom values.
+- Added optional-inline values, attached short values, value-taking cluster
+  members, count options, scalar repetition policies, and multiple values for
+  every scalar parser.
+- Replaced boolean `negatedFlag` with explicit `falseFlags` arrays.
+- Replaced parse settings with `argv`, `unknownFlagPolicy`, and
+  `flagPlacement`.
+- Renamed result location fields around argv terminology and added deterministic
+  suggestions for unknown long flags and rejected literal choices.
+- Closed value factories, custom protocols, parse settings, option definitions,
+  and diagnostic unions at the TypeScript and runtime boundaries.
+- Strengthened definition snapshots, custom-value ownership, immutable results,
+  and independently discoverable definition diagnostics.
+- Removed the version 2 grammar, names, diagnostics, and compatibility surface.
+
 ## 2.0.0 - 2026-07-30
 
 - Replaced the public API with a compiled `createParser()` facade and a
   discriminated parse result.
 - Reworked option definitions so TypeScript rejects invalid defaults,
   contradictory presence rules, and unsupported properties.
-- Made boolean negation explicit and repeatable string values consume one
+- Made boolean negation explicit and multiple string options consume one
   argument per occurrence.
 - Defined boolean-only short clusters, exact value consumption, scalar
   duplicate errors, and separate post-`--` arguments.

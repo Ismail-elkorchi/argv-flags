@@ -14,8 +14,8 @@ const repositoryRoot = fileURLToPath(new URL('..', import.meta.url));
 const temporaryRoot = await mkdtemp(path.join(tmpdir(), 'argv-flags-consumers-'));
 const packageManager = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 
-const run = (command, args, cwd) => {
-	const result = spawnSync(command, args, {
+const run = (command, commandArguments, cwd) => {
+	const result = spawnSync(command, commandArguments, {
 		cwd,
 		encoding: 'utf8',
 		env: {
@@ -26,7 +26,7 @@ const run = (command, args, cwd) => {
 	if (result.status !== 0) {
 		throw new Error(
 			[
-				`${command} ${args.join(' ')} failed with status ${String(result.status)}.`,
+				`${command} ${commandArguments.join(' ')} failed with status ${String(result.status)}.`,
 				result.stdout,
 				result.stderr
 			]
@@ -68,16 +68,18 @@ try {
 	);
 	await writeFile(
 		path.join(consumerRoot, 'consumer.mjs'),
-		`import { DefinitionError, createParser } from 'argv-flags';
+		`import { DefinitionError, createParser, value } from 'argv-flags';
 
 const parser = createParser({
   all: { type: 'boolean', flags: ['-a'] },
   brief: { type: 'boolean', flags: ['-b'] },
   color: { type: 'boolean', flags: ['-c'] },
   name: { type: 'string', flags: ['--name'], required: true },
+  jobs: { type: value.integer({ minimum: 1 }), flags: ['-j'], default: 1 },
+  quiet: { type: 'count', flags: ['-q'] },
 });
 const result = parser.parse({
-  args: ['-abc', '--name', '--literal', '--', 'after'],
+  argv: ['-abc', '--name', '--literal', '-j3', '-qq', '--', 'after'],
 });
 if (
   !result.success ||
@@ -85,7 +87,9 @@ if (
   result.values.brief !== true ||
   result.values.color !== true ||
   result.values.name !== '--literal' ||
-  result.argumentsAfterDoubleDash[0] !== 'after'
+  result.values.jobs !== 3 ||
+  result.values.quiet !== 2 ||
+  result.afterDoubleDash[0] !== 'after'
 ) {
   throw new Error('Installed package returned an unexpected parse result.');
 }
@@ -94,28 +98,38 @@ try {
   createParser({ invalid: { type: 'boolean', flags: ['--invalid'], typo: true } });
   throw new Error('Installed package accepted an invalid definition.');
 } catch (error) {
-  if (!(error instanceof DefinitionError) || error.issues[0]?.code !== 'UNSUPPORTED_DEFINITION_PROPERTY') {
+  if (!(error instanceof DefinitionError) || error.issues[0]?.code !== 'UNSUPPORTED_OPTION_PROPERTY') {
     throw error;
   }
+}
+
+const runtimeResult = createParser({
+  quiet: { type: 'count', flags: ['-q'] },
+}).parse();
+if (!runtimeResult.success || runtimeResult.values.quiet !== 0) {
+  throw new Error('Installed package could not resolve the runtime argv.');
 }
 `
 	);
 	await writeFile(
 		path.join(consumerRoot, 'consumer.ts'),
-		`import { createParser, type ParseIssue } from 'argv-flags';
+		`import { createParser, value, type ParseIssue } from 'argv-flags';
 
 const parser = createParser({
   source: { type: 'string', flags: ['--source'], required: true },
-  count: { type: 'number', flags: ['--count'], default: 1 },
+  count: { type: value.integer({ minimum: 0 }), flags: ['--count'], default: 1 },
+  mode: { type: value.choice(['auto', 'always']), flags: ['--mode'], default: 'auto' },
 });
-const result = parser.parse({ args: [] });
+const result = parser.parse({ argv: [] });
 if (result.success) {
   const source: string = result.values.source;
   const count: number = result.values.count;
+  const mode: 'auto' | 'always' = result.values.mode;
   void source;
   void count;
+  void mode;
 } else {
-  const issues: ParseIssue[] = result.issues;
+  const issues: readonly ParseIssue[] = result.issues;
   void issues;
 }
 `

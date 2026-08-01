@@ -72,6 +72,7 @@ export default [
       ...tsPlugin.configs['strict-type-checked'].rules,
       ...tsPlugin.configs['stylistic-type-checked'].rules,
       'no-undef': 'off',
+      'no-redeclare': 'off',
       'no-unused-vars': 'off',
       'n/no-missing-import': 'off',
       'n/no-unsupported-features/es-syntax': 'off',

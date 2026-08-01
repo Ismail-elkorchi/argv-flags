@@ -10,13 +10,15 @@ export class DefinitionError extends TypeError {
 		super(issues.map((issue) => issue.message).join('\n'));
 		this.name = 'DefinitionError';
 		this.issues = Object.freeze(
-			issues.map((issue) =>
-				Object.freeze(
-					'properties' in issue
-						? { ...issue, properties: Object.freeze([...issue.properties]) }
-						: { ...issue }
-				)
-			)
+			issues.map((issue): DefinitionIssue => {
+				if (issue.code === 'CONFLICTING_OPTION_PROPERTIES') {
+					const properties: typeof issue.properties = Object.freeze([
+						...issue.properties
+					]);
+					return Object.freeze({ ...issue, properties });
+				}
+				return Object.freeze({ ...issue });
+			})
 		);
 	}
 }

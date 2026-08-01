@@ -1,28 +1,21 @@
 import { createParser } from "../dist/index.js";
 
 const parser = createParser({
-  src: { type: "string", flags: ["--src"], required: true },
-  dest: { type: "string", flags: ["--dest"], required: true },
+  source: { type: "string", flags: ["-s", "--source"], required: true },
+  output: { type: "string", flags: ["-o", "--output"], required: true },
   verbose: {
     type: "boolean",
-    flags: ["--verbose"],
-    negatedFlag: "--no-verbose",
+    flags: ["-v", "--verbose"],
+    falseFlags: ["--no-verbose"],
     default: false,
   },
 });
 
-const result = parser.parse({ args: process.argv.slice(2) });
+const result = parser.parse({ argv: process.argv.slice(2) });
 
 if (!result.success) {
   process.stderr.write(
-    `${JSON.stringify(
-      {
-        success: false,
-        issues: result.issues,
-      },
-      null,
-      2,
-    )}\n`,
+    `${JSON.stringify({ success: false, issues: result.issues }, null, 2)}\n`,
   );
   process.exit(2);
 }
@@ -33,8 +26,8 @@ process.stdout.write(
       success: true,
       values: result.values,
       positionals: result.positionals,
-      argumentsAfterDoubleDash: result.argumentsAfterDoubleDash,
-      unknownArguments: result.unknownArguments,
+      afterDoubleDash: result.afterDoubleDash,
+      unknownFlags: result.unknownFlags,
     },
     null,
     2,

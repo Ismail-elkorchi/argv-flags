@@ -1,316 +1,454 @@
-/**
- * A literal CLI flag name, such as `-v` or `--verbose`.
- *
- * Runtime validation applies the complete short- and long-flag grammar.
- */
-export type FlagName = `-${string}`;
+/** @internal Opaque value-parser brand; not exported from the package root. */
+export declare const valueParserBrand: unique symbol;
 
-/** @internal Presence and default rules shared by option definitions. */
-export type PresenceDefinition<DefaultValue> =
-	| {
-			readonly required: true;
-			readonly default?: never;
-	  }
-	| {
-			readonly required?: false;
-			readonly default?: DefaultValue;
-	  };
-
-/** @internal Definition for a scalar string option. */
-export type StringOptionDefinition = {
-	readonly flags: readonly [FlagName, ...FlagName[]];
-	readonly type: 'string';
-	readonly multiple?: false;
-	readonly allowEmpty?: boolean;
-} & PresenceDefinition<string>;
-
-/** @internal Definition for a multiple string option. */
-export type MultipleStringOptionDefinition = {
-	readonly flags: readonly [FlagName, ...FlagName[]];
-	readonly type: 'string';
-	readonly multiple: true;
-	readonly allowEmpty?: boolean;
-} & PresenceDefinition<readonly string[]>;
-
-/** @internal Definition for a boolean option. */
-export type BooleanOptionDefinition = {
-	readonly flags: readonly [FlagName, ...FlagName[]];
-	readonly type: 'boolean';
-	readonly negatedFlag?: FlagName;
-} & PresenceDefinition<boolean>;
-
-/** @internal Definition for a number option. */
-export type NumberOptionDefinition = {
-	readonly flags: readonly [FlagName, ...FlagName[]];
-	readonly type: 'number';
-} & PresenceDefinition<number>;
-
-/**
- * Definition for one logical CLI option.
- *
- * An option is the configured value keyed in an option-definition object. A
- * flag is one literal CLI spelling that selects that option.
- */
-export type OptionDefinition =
-	| StringOptionDefinition
-	| MultipleStringOptionDefinition
-	| BooleanOptionDefinition
-	| NumberOptionDefinition;
-
-/** Option definitions keyed by the logical names used in parsed values. */
-export type OptionDefinitions = Readonly<Record<string, OptionDefinition>>;
-
-/** @internal Properties supported by the selected option variant. */
-export type AllowedDefinitionKeys<Definition extends OptionDefinition> =
-	Definition extends MultipleStringOptionDefinition
-		? keyof MultipleStringOptionDefinition
-		: Definition extends StringOptionDefinition
-			? keyof StringOptionDefinition
-			: Definition extends BooleanOptionDefinition
-				? keyof BooleanOptionDefinition
-				: keyof NumberOptionDefinition;
-
-/**
- * Rejects properties that do not belong to the selected option variant.
- *
- * This type supports the public factory signature but is not re-exported by
- * the package facade.
- */
-export type ExactOptionDefinitions<Definitions extends OptionDefinitions> = {
-	readonly [Name in keyof Definitions]: Definitions[Name] &
-		Record<
-			Exclude<keyof Definitions[Name], AllowedDefinitionKeys<Definitions[Name]>>,
-			never
-		>;
-};
-
-/** @internal Parsed runtime value for an option definition. */
-export type OptionValue<Definition extends OptionDefinition> =
-	Definition extends MultipleStringOptionDefinition
-		? string[]
-		: Definition extends StringOptionDefinition
-			? string
-			: Definition extends BooleanOptionDefinition
-				? boolean
-				: number;
-
-/** @internal Whether a successful parse guarantees an option value. */
-export type HasGuaranteedValue<Definition extends OptionDefinition> =
-	Definition extends MultipleStringOptionDefinition
-		? true
-		: Definition extends { required: true }
-			? true
-			: Definition extends { default: unknown }
-				? true
-				: false;
-
-/** @internal Option names guaranteed to have successful values. */
-export type GuaranteedOptionNames<Definitions extends OptionDefinitions> = {
-	[Name in keyof Definitions]-?: HasGuaranteedValue<Definitions[Name]> extends true
-		? Name
-		: never;
-}[keyof Definitions];
-
-/** @internal Option names whose successful values remain optional. */
-export type OptionalOptionNames<Definitions extends OptionDefinitions> = Exclude<
-	keyof Definitions,
-	GuaranteedOptionNames<Definitions>
->;
-
-/**
- * @internal
- *
- * Values from a successful parse.
- *
- * Required options, defaulted options, and multiple string options are
- * guaranteed. Other option properties are absent when no value was parsed.
- */
-export type ParsedValues<Definitions extends OptionDefinitions> = {
-	[Name in GuaranteedOptionNames<Definitions>]-?: OptionValue<Definitions[Name]>;
-} & {
-	[Name in OptionalOptionNames<Definitions>]?: OptionValue<Definitions[Name]>;
-};
-
-/** @internal Whether each logical option appeared through a recognized flag. */
-export type SpecifiedOptions<Definitions extends OptionDefinitions> = {
-	[Name in keyof Definitions]: boolean;
-};
-
-/** An unrecognized flag retained from its original argument. */
-export interface UnknownArgument {
-	/** Complete raw argument. */
-	argument: string;
-	/** Unrecognized literal flag parsed from the argument. */
-	flag: string;
-	/** Zero-based index of the argument in `args`. */
-	index: number;
+/** An opaque parser produced by the {@link value} namespace. */
+export interface ValueParser<out Output> {
+	/** @internal Carries the parser output type without runtime state. */
+	readonly [valueParserBrand]: Output;
 }
 
-/** A structured definition issue reported by {@link DefinitionError}. */
-export type DefinitionIssue =
-	| {
-			code: 'INVALID_DEFINITIONS';
-			message: string;
-	  }
-	| {
-			code: 'INVALID_OPTION_NAME';
-			message: string;
-			option: string;
-	  }
-	| {
-			code: 'INVALID_OPTION_DEFINITION';
-			message: string;
-			option: string;
-	  }
-	| {
-			code: 'INVALID_OPTION_TYPE';
-			message: string;
-			option: string;
-	  }
-	| {
-			code: 'UNSUPPORTED_DEFINITION_PROPERTY';
-			message: string;
-			option: string;
-			property: string;
-	  }
-	| {
-			code: 'INVALID_DEFINITION_PROPERTY';
-			message: string;
-			option: string;
-			property: string;
-	  }
-	| {
-			code: 'CONFLICTING_DEFINITION_PROPERTIES';
-			message: string;
-			option: string;
-			properties: readonly string[];
-	  }
-	| {
-			code: 'INVALID_FLAG';
-			message: string;
-			option: string;
-			property: 'flags' | 'negatedFlag';
-			flag?: string;
-			flagIndex?: number;
-	  }
-	| {
-			code: 'DUPLICATE_FLAG';
-			message: string;
-			option: string;
-			flag: string;
-			conflictingOption: string;
-	  };
-
-/** Stable machine-readable definition issue codes. */
-export type DefinitionIssueCode = DefinitionIssue['code'];
-
-/** @internal Fields shared by issues associated with one argument. */
-export interface ArgumentIssueBase {
-	/** Human-readable explanation intended for people. */
-	message: string;
-	/** Literal flag name parsed from the argument. */
-	flag: string;
-	/** Complete raw argument that contained the flag. */
-	argument: string;
-	/** Zero-based index of the flag argument. */
-	index: number;
+/** Context supplied to a custom value parser. */
+export interface ValueParseContext {
+	/** Logical option selected by the recognized flag. */
+	readonly option: string;
+	/** Configured flag spelling that selected the option. */
+	readonly flag: string;
+	/** Complete argv element containing the flag. */
+	readonly argvElement: string;
+	/** Index of `argvElement` in the argv vector. */
+	readonly argvIndex: number;
+	/** Index of the argv element containing the raw value. */
+	readonly valueArgvIndex: number;
+	/** Whether the raw value was attached to its flag. */
+	readonly inline: boolean;
 }
 
-/** A structured parse issue with fields determined by its code. */
-export type ParseIssue =
-	| (ArgumentIssueBase & {
-			code: 'UNKNOWN_FLAG';
-	  })
-	| (ArgumentIssueBase & {
-			code: 'MISSING_FLAG_VALUE';
-			option: string;
-	  })
-	| (ArgumentIssueBase & {
-			code: 'INVALID_FLAG_VALUE';
-			option: string;
-			value: string;
-	  })
-	| (ArgumentIssueBase & {
-			code: 'UNEXPECTED_FLAG_VALUE';
-			option: string;
-			value: string;
-	  })
-	| (ArgumentIssueBase & {
-			code: 'EMPTY_FLAG_VALUE';
-			option: string;
-			value: '';
-	  })
-	| (ArgumentIssueBase & {
-			code: 'INVALID_FLAG_SYNTAX';
-			option: string;
-			syntax: 'SHORT_ATTACHED_VALUE' | 'NON_BOOLEAN_SHORT_CLUSTER';
-	  })
-	| (ArgumentIssueBase & {
-			code: 'DUPLICATE_OPTION';
-			option: string;
-	  })
-	| {
-			code: 'MISSING_REQUIRED_OPTION';
-			message: string;
-			option: string;
-			flag: string;
-	  };
+/** A successful custom value parse. */
+export interface ValueParseSuccess<Output> {
+	/** Marks a successful custom parse. */
+	readonly success: true;
+	/** Decoded value. */
+	readonly value: Output;
+}
 
-/** Stable machine-readable parse issue codes. */
-export type ParseIssueCode = ParseIssue['code'];
+/** A rejected custom value parse. */
+export interface ValueParseFailure {
+	/** Marks a rejected custom parse. */
+	readonly success: false;
+	/** Human-readable explanation. */
+	readonly message: string;
+	/** Optional machine-readable reason chosen by the custom parser. */
+	readonly reason?: string;
+	/** Optional structured context chosen by the custom parser. */
+	readonly details?: Readonly<Record<string, unknown>>;
+	/** Optional replacement candidates in preferred order. */
+	readonly suggestions?: readonly string[];
+}
 
-/**
- * Settings for one parse operation.
- *
- * When `args` is omitted, the parser reads `process.argv.slice(2)` on Node and
- * Bun, then falls back to `Deno.args`, then to an empty array.
- */
+/** Result returned by a custom value parser. */
+export type ValueParseResult<Output> =
+	| ValueParseSuccess<Output>
+	| ValueParseFailure;
+
+/** Protocol used by {@link value.custom}. */
+export interface CustomValueParserProtocol<Output> {
+	/** Decodes one raw value synchronously. */
+	readonly parse: (
+		raw: string,
+		context: ValueParseContext
+	) => ValueParseResult<Output>;
+	/** Checks values used as decoded output, defaults, or implicit values. */
+	readonly accepts: (value: unknown) => value is Output;
+	/** Copies a value when ownership must pass to the parser or a result. */
+	readonly snapshot?: (value: Output) => Output;
+}
+
+/** Settings for one parse operation. */
 export interface ParseSettings {
-	/** Raw arguments to parse. */
-	args?: readonly string[];
-	/** Collects unrecognized flags instead of reporting issues. */
-	allowUnknownFlags?: boolean;
+	/** Explicit argv vector; runtime argv is used when omitted. */
+	readonly argv?: readonly string[];
+	/** Whether unknown flags fail or are only collected. */
+	readonly unknownFlagPolicy?: 'error' | 'collect';
+	/** Whether flags remain active after a positional argument. */
+	readonly flagPlacement?: 'interspersed' | 'before-positionals';
 }
 
 /** @internal Rejects parse-setting properties outside the public contract. */
 export type ExactParseSettings<Settings extends ParseSettings> = Settings &
 	Record<Exclude<keyof Settings, keyof ParseSettings>, never>;
 
-/** @internal Fields shared by successful and failed parse results. */
-export interface ParseResultBase<Definitions extends OptionDefinitions> {
-	/** Whether each option appeared through a recognized flag. */
-	specified: SpecifiedOptions<Definitions>;
-	/** Arguments encountered before `--` that were not consumed. */
-	positionals: string[];
-	/** Arguments after `--`, without the boundary itself. */
-	argumentsAfterDoubleDash: string[];
-	/** Unrecognized flags collected when `allowUnknownFlags` is enabled. */
-	unknownArguments: UnknownArgument[];
+/** One unknown flag retained with its original argv location. */
+export interface UnknownFlag {
+	/** Complete argv element containing the unknown flag. */
+	readonly argvElement: string;
+	/** Parsed unknown flag spelling. */
+	readonly flag: string;
+	/** Index of `argvElement` in the argv vector. */
+	readonly argvIndex: number;
+	/** UTF-16 offset of an unknown short-cluster member. */
+	readonly offset?: number;
+	/** Text after the first `=` on an unknown long flag. */
+	readonly inlineValue?: string;
 }
 
-/** @internal Result returned after an error-free parse. */
+/** @internal Fields shared by issues associated with a configured flag. */
+interface FlagLocation {
+	readonly flag: string;
+	readonly argvElement: string;
+	readonly argvIndex: number;
+	readonly offset?: number;
+}
+
+/** A structured parse issue with fields determined by its code. */
+export type ParseIssue =
+	| (FlagLocation & {
+			readonly code: 'UNKNOWN_FLAG';
+			readonly message: string;
+			readonly suggestions?: readonly string[];
+	  })
+	| {
+			readonly code: 'INVALID_FLAG_SYNTAX';
+			readonly message: string;
+			readonly argvElement: string;
+			readonly argvIndex: number;
+			readonly offset?: number;
+	  }
+	| (FlagLocation & {
+			readonly code: 'MISSING_OPTION_VALUE';
+			readonly message: string;
+			readonly option: string;
+	  })
+	| (FlagLocation & {
+			readonly code: 'INVALID_OPTION_VALUE';
+			readonly message: string;
+			readonly option: string;
+			readonly rawValue: string;
+			readonly valueArgvIndex: number;
+			readonly inline: boolean;
+			readonly reason?: string;
+			readonly details?: Readonly<Record<string, unknown>>;
+			readonly suggestions?: readonly string[];
+	  })
+	| (FlagLocation & {
+			readonly code: 'UNEXPECTED_OPTION_VALUE';
+			readonly message: string;
+			readonly option: string;
+			readonly rawValue: string;
+	  })
+	| (FlagLocation & {
+			readonly code: 'REPEATED_OPTION';
+			readonly message: string;
+			readonly option: string;
+	  })
+	| {
+			readonly code: 'MISSING_REQUIRED_OPTION';
+			readonly message: string;
+			readonly option: string;
+	  };
+
+/** A structured definition issue with fields determined by its code. */
+export type DefinitionIssue =
+	| {
+			readonly code: 'INVALID_DEFINITIONS';
+			readonly message: string;
+	  }
+	| {
+			readonly code: 'INVALID_OPTION_NAME';
+			readonly message: string;
+			readonly option: string | symbol;
+	  }
+	| {
+			readonly code: 'INVALID_OPTION_DEFINITION';
+			readonly message: string;
+			readonly option: string;
+	  }
+	| {
+			readonly code: 'UNSUPPORTED_OPTION_PROPERTY';
+			readonly message: string;
+			readonly option: string;
+			readonly property: string | symbol;
+	  }
+	| {
+			readonly code: 'INVALID_OPTION_PROPERTY';
+			readonly message: string;
+			readonly option: string;
+			readonly property: string;
+	  }
+	| {
+			readonly code: 'CONFLICTING_OPTION_PROPERTIES';
+			readonly message: string;
+			readonly option: string;
+			readonly properties: readonly [string, string, ...string[]];
+	  }
+	| {
+			readonly code: 'INVALID_FLAG';
+			readonly message: string;
+			readonly option: string;
+			readonly property: 'flags' | 'falseFlags';
+			readonly flagIndex: number;
+			readonly flag?: string;
+	  }
+	| {
+			readonly code: 'DUPLICATE_FLAG';
+			readonly message: string;
+			readonly option: string;
+			readonly property: 'flags' | 'falseFlags';
+			readonly flag: string;
+			readonly flagIndex: number;
+			readonly conflictingOption: string;
+			readonly conflictingProperty: 'flags' | 'falseFlags';
+	  }
+	| {
+			readonly code: 'INVALID_VALUE_PARSER';
+			readonly message: string;
+			readonly option: string;
+			readonly property: 'type';
+	  }
+	| {
+			readonly code: 'INVALID_DEFAULT';
+			readonly message: string;
+			readonly option: string;
+			readonly property: 'default';
+	  };
+
+/** @internal A CLI flag spelling accepted at the type boundary. */
+export type FlagName = `-${string}`;
+
+/** @internal A non-empty list of flag spellings. */
+export type FlagList = readonly [FlagName, ...FlagName[]];
+
+/** @internal Repetition behavior for scalar and boolean options. */
+export type RepeatPolicy = 'error' | 'first' | 'last';
+
+/** @internal Whether a value is required or available only inline. */
+export type ValueMode = 'required' | 'optional-inline';
+
+/** @internal Value parsers supported by value-taking definitions. */
+export type ValueType =
+	| 'string'
+	| 'number'
+	| 'integer'
+	| ValueParser<unknown>;
+
+/** @internal Output selected by a value parser. */
+export type ValueOf<Type extends ValueType> = Type extends 'string'
+	? string
+	: Type extends 'number' | 'integer'
+		? number
+		: Type extends ValueParser<infer Output>
+			? Output
+			: never;
+
+/** @internal Presence and default rules. */
+type PresenceDefinition<DefaultValue> =
+	| {
+			readonly required?: boolean;
+			readonly default?: never;
+	  }
+	| {
+			readonly required?: false;
+			readonly default: DefaultValue;
+	  };
+
+/** @internal Required or optional-inline value input. */
+type ValueInputDefinition<Type extends ValueType> =
+	| {
+			readonly valueMode?: 'required';
+			readonly implicitValue?: never;
+	  }
+	| {
+			readonly valueMode: 'optional-inline';
+			readonly implicitValue: ValueOf<Type>;
+	  };
+
+/** @internal Scalar value option definition. */
+export type ScalarValueOptionDefinition<Type extends ValueType> = {
+	readonly flags: FlagList;
+	readonly type: Type;
+	readonly multiple?: false;
+	readonly repeat?: RepeatPolicy;
+} & PresenceDefinition<ValueOf<Type>> &
+	ValueInputDefinition<Type>;
+
+/** @internal Multiple-value option definition. */
+export type MultipleValueOptionDefinition<Type extends ValueType> = {
+	readonly flags: FlagList;
+	readonly type: Type;
+	readonly multiple: true;
+} & PresenceDefinition<readonly ValueOf<Type>[]> &
+	ValueInputDefinition<Type>;
+
+/** @internal Boolean option definition. */
+export type BooleanOptionDefinition = {
+	readonly flags: FlagList;
+	readonly type: 'boolean';
+	readonly falseFlags?: FlagList;
+	readonly repeat?: RepeatPolicy;
+} & PresenceDefinition<boolean>;
+
+/** @internal Count option definition. */
+export interface CountOptionDefinition {
+	readonly flags: FlagList;
+	readonly type: 'count';
+}
+
+/** @internal Definition for one logical option. */
+export type OptionDefinition =
+	| ScalarValueOptionDefinition<ValueType>
+	| MultipleValueOptionDefinition<ValueType>
+	| BooleanOptionDefinition
+	| CountOptionDefinition;
+
+/** @internal Definitions keyed by their logical option names. */
+export type OptionDefinitions = Readonly<Record<string, unknown>>;
+
+/** @internal Adds a closed property set to an inferred definition. */
+type ExactDefinition<Definition> = Definition extends {
+	readonly type: infer Type;
+}
+	? Type extends ValueType
+		? Definition extends { readonly multiple: true }
+			? MultipleValueOptionDefinition<Type> &
+					Record<
+						Exclude<
+							keyof Definition,
+							keyof MultipleValueOptionDefinition<Type>
+						>,
+						never
+					>
+			: ScalarValueOptionDefinition<Type> &
+					Record<
+						Exclude<
+							keyof Definition,
+							keyof ScalarValueOptionDefinition<Type>
+						>,
+						never
+					>
+		: Type extends 'boolean'
+			? BooleanOptionDefinition &
+					Record<
+						Exclude<keyof Definition, keyof BooleanOptionDefinition>,
+						never
+					>
+			: Type extends 'count'
+				? CountOptionDefinition &
+						Record<
+							Exclude<keyof Definition, keyof CountOptionDefinition>,
+							never
+						>
+				: never
+	: never;
+
+/** @internal Validates every inferred definition without widening it. */
+export type ExactOptionDefinitions<Definitions extends OptionDefinitions> = {
+	readonly [Name in keyof Definitions]: Name extends string
+		? ExactDefinition<Definitions[Name]>
+		: never;
+};
+
+/** @internal Runtime value inferred for one definition. */
+type OptionValue<Definition> = Definition extends { readonly type: 'boolean' }
+	? boolean
+	: Definition extends { readonly type: 'count' }
+		? number
+		: Definition extends { readonly type: 'number' | 'integer' }
+			? Definition extends { readonly multiple: true }
+				? readonly number[]
+				: number
+			: Definition extends { readonly type: 'string' }
+				? Definition extends { readonly multiple: true }
+					? readonly string[]
+					: string
+				: Definition extends { readonly type: ValueParser<infer Output> }
+					? Definition extends { readonly multiple: true }
+						? readonly Output[]
+						: Output
+					: never;
+
+/** @internal Whether a successful parse always contains an option value. */
+type HasGuaranteedValue<Definition> = Definition extends {
+	readonly type: 'count';
+}
+	? true
+	: Definition extends { readonly multiple: true }
+		? true
+		: Definition extends { readonly required: true }
+			? true
+			: Definition extends { readonly default: unknown }
+				? true
+				: false;
+
+/** @internal Names guaranteed on a successful result. */
+type GuaranteedOptionNames<Definitions extends OptionDefinitions> = {
+	[Name in keyof Definitions]-?: HasGuaranteedValue<
+		Definitions[Name]
+	> extends true
+		? Name
+		: never;
+}[keyof Definitions];
+
+/** Values exposed only after a successful parse. */
+export type ParsedValues<Definitions extends OptionDefinitions> = {
+	readonly [Name in GuaranteedOptionNames<Definitions>]-?: OptionValue<
+		Definitions[Name]
+	>;
+} & {
+	readonly [Name in Exclude<
+		keyof Definitions,
+		GuaranteedOptionNames<Definitions>
+	>]?: OptionValue<Definitions[Name]>;
+};
+
+/** @internal Whether each option appeared through a recognized flag. */
+type SpecifiedOptions<Definitions extends OptionDefinitions> = {
+	readonly [Name in keyof Definitions]: boolean;
+};
+
+/** @internal Fields shared by successful and failed parse results. */
+interface ParseResultBase<Definitions extends OptionDefinitions> {
+	readonly specified: SpecifiedOptions<Definitions>;
+	readonly positionals: readonly string[];
+	readonly afterDoubleDash: readonly string[];
+	readonly unknownFlags: readonly UnknownFlag[];
+}
+
+/** A successful parse result. */
 export type ParseSuccess<Definitions extends OptionDefinitions> =
 	ParseResultBase<Definitions> & {
-		success: true;
-		values: ParsedValues<Definitions>;
+		readonly success: true;
+		readonly values: ParsedValues<Definitions>;
 	};
 
-/** @internal Result returned when parsing produced one or more issues. */
+/** A failed parse result. */
 export type ParseFailure<Definitions extends OptionDefinitions> =
 	ParseResultBase<Definitions> & {
-		success: false;
-		issues: ParseIssue[];
+		readonly success: false;
+		readonly issues: readonly ParseIssue[];
 	};
 
-/** Parse result discriminated by `success`. Values exist only on success. */
+/** Parse result discriminated by `success`. */
 export type ParseResult<Definitions extends OptionDefinitions> =
 	| ParseSuccess<Definitions>
 	| ParseFailure<Definitions>;
 
-/** Parser compiled from one immutable snapshot of option definitions. */
+/** A reusable parser compiled from one definition snapshot. */
 export interface Parser<Definitions extends OptionDefinitions> {
-	/** Parses explicit or runtime arguments without mutating the input. */
-	parse<const Settings extends ParseSettings = ParseSettings>(
-		settings?: ExactParseSettings<Settings>
+	/** Parses the current runtime's argv. */
+	parse(): ParseResult<Definitions>;
+	/** Parses with explicit closed settings. */
+	parse<const Settings extends ParseSettings>(
+		settings: ExactParseSettings<Settings>
 	): ParseResult<Definitions>;
 }
+
+/** Successful values inferred from a parser. */
+export type InferValues<ParserType> =
+	ParserType extends Parser<infer Definitions>
+		? ParsedValues<Definitions>
+		: never;
+
+/** Complete result inferred from a parser. */
+export type ParserResult<ParserType> =
+	ParserType extends Parser<infer Definitions>
+		? ParseResult<Definitions>
+		: never;

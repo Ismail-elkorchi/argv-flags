@@ -1,285 +1,311 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { DefinitionError, createParser } from '../dist/index.js';
-import { compileDefinitions } from '../dist/definitions.js';
+import { DefinitionError, createParser, value } from '../dist/index.js';
 
 const readDefinitionError = (callback) => {
 	try {
 		callback();
-		assert.fail('Expected DefinitionError');
+		assert.fail('Expected DefinitionError.');
 	} catch (error) {
-		assert.ok(error instanceof DefinitionError);
+		assert(error instanceof DefinitionError);
 		return error;
 	}
 };
 
-test('reports structured issues for invalid definition containers and entries', () => {
-	const containerError = readDefinitionError(() => createParser(null));
-	assert.deepStrictEqual(containerError.issues, [
-		{
-			code: 'INVALID_DEFINITIONS',
-			message: 'Option definitions must be a plain object.'
-		}
-	]);
-	const collectionError = readDefinitionError(() => createParser(new Map()));
-	assert.strictEqual(collectionError.issues[0]?.code, 'INVALID_DEFINITIONS');
-
-	const entryError = readDefinitionError(() =>
-		createParser({
-			source: null,
-			count: { type: 'object', flags: ['--count'] }
-		})
-	);
-	assert.deepStrictEqual(
-		entryError.issues.map((issue) => issue.code),
-		['INVALID_OPTION_DEFINITION', 'INVALID_OPTION_TYPE']
-	);
-});
-
-test('rejects invalid, repeated, and conflicting flags', () => {
-	const error = readDefinitionError(() =>
-		createParser({
-			invalid: { type: 'string', flags: ['source'] },
-			repeated: { type: 'string', flags: ['--same', '--same'] },
-			first: { type: 'string', flags: ['--value'] },
-			second: { type: 'string', flags: ['--value'] },
-			enabled: {
-				type: 'boolean',
-				flags: ['--enabled'],
-				negatedFlag: '--enabled'
-			}
-		})
-	);
-
-	assert.deepStrictEqual(
-		error.issues.map((issue) => issue.code),
-		['INVALID_FLAG', 'DUPLICATE_FLAG', 'DUPLICATE_FLAG', 'DUPLICATE_FLAG']
-	);
-	assert.deepStrictEqual(error.issues[2], {
-		code: 'DUPLICATE_FLAG',
-		message:
-			'Flag "--value" for option "second" is already assigned to option "first".',
-		option: 'second',
-		flag: '--value',
-		conflictingOption: 'first'
-	});
-});
-
-test('rejects missing, non-string, and malformed negated flags', () => {
-	const error = readDefinitionError(() =>
-		createParser({
-			missing: { type: 'string', flags: [] },
-			nonString: { type: 'string', flags: [1] },
-			negated: {
-				type: 'boolean',
-				flags: ['--enabled'],
-				negatedFlag: '--'
-			}
-		})
-	);
-
-	assert.deepStrictEqual(
-		error.issues.map((issue) => issue.code),
-		['INVALID_DEFINITION_PROPERTY', 'INVALID_FLAG', 'INVALID_FLAG']
-	);
-});
-
-test('rejects empty and symbol option names', () => {
-	const symbolName = Symbol('option');
-	const definitions = {
-		'': { type: 'string', flags: ['--empty'] },
-		[symbolName]: { type: 'string', flags: ['--symbol'] }
-	};
-	const error = readDefinitionError(() => createParser(definitions));
-
-	assert.deepStrictEqual(
-		error.issues.map((issue) => issue.code),
-		['INVALID_OPTION_NAME', 'INVALID_OPTION_NAME']
-	);
-});
-
-test('rejects invalid defaults and contradictory presence rules', () => {
-	const error = readDefinitionError(() =>
-		createParser({
-			count: { type: 'number', flags: ['--count'], default: 'many' },
-			source: {
-				type: 'string',
-				flags: ['--source'],
-				required: true,
-				default: 'input.txt'
-			}
-		})
-	);
-
-	assert.deepStrictEqual(error.issues[0], {
-		code: 'INVALID_DEFINITION_PROPERTY',
-		message: 'Option "count" default must be a finite number.',
-		option: 'count',
-		property: 'default'
-	});
-	assert.deepStrictEqual(error.issues[1], {
-		code: 'CONFLICTING_DEFINITION_PROPERTIES',
-		message: 'Option "source" cannot combine "required" with "default".',
-		option: 'source',
-		properties: ['required', 'default']
-	});
-
-	const sparseDefault = new Array(1);
-	const sparseError = readDefinitionError(() =>
-		createParser({
-			items: {
-				type: 'string',
-				flags: ['--item'],
-				multiple: true,
-				default: sparseDefault
-			}
-		})
-	);
+test('rejects invalid definition containers, option names, and accessors', () => {
 	assert.strictEqual(
-		sparseError.issues[0]?.code,
-		'INVALID_DEFINITION_PROPERTY'
+		readDefinitionError(() => createParser(null)).issues[0]?.code,
+		'INVALID_DEFINITIONS'
 	);
-});
-
-test('rejects every unknown own field, including symbol fields', () => {
-	const hidden = Symbol('hidden');
-	const source = {
-		type: 'string',
-		flags: ['--source'],
-		require: true,
-		[hidden]: true
-	};
-	const error = readDefinitionError(() => createParser({ source }));
-
-	assert.deepStrictEqual(
-		error.issues.map((issue) => ({
-			code: issue.code,
-			property: issue.property
-		})),
-		[
-			{ code: 'UNSUPPORTED_DEFINITION_PROPERTY', property: 'require' },
-			{ code: 'UNSUPPORTED_DEFINITION_PROPERTY', property: 'Symbol(hidden)' }
-		]
-	);
-});
-
-test('rejects custom prototypes and accepts null-prototype definitions', () => {
-	const inheritedDefinition = Object.create({
-		type: 'string',
-		flags: ['--inherited']
-	});
-	const inheritedError = readDefinitionError(() =>
-		createParser({ inherited: inheritedDefinition })
-	);
-	assert.deepStrictEqual(
-		inheritedError.issues.map((issue) => issue.code),
-		['INVALID_OPTION_DEFINITION']
-	);
-
-	const definition = Object.assign(Object.create(null), {
-		type: 'string',
-		flags: ['--value']
-	});
-	const parser = createParser({ value: definition });
-	const result = parser.parse({ args: ['--value', 'safe'] });
-	assert.strictEqual(result.success, true);
-	assert.strictEqual(result.values.value, 'safe');
-});
-
-test('rejects malformed values for every supported definition field', () => {
+	const symbol = Symbol('option');
 	const error = readDefinitionError(() =>
 		createParser({
-			source: {
+			'': { type: 'string', flags: ['--empty'] },
+			[symbol]: { type: 'string', flags: ['--symbol'] },
+			invalid: null
+		})
+	);
+	assert.deepStrictEqual(
+		error.issues.map((issue) => issue.code),
+		['INVALID_OPTION_NAME', 'INVALID_OPTION_DEFINITION', 'INVALID_OPTION_NAME']
+	);
+
+	const accessor = {};
+	Object.defineProperty(accessor, 'type', { get: () => 'string' });
+	assert.throws(
+		() => createParser({ accessor }),
+		/option "accessor".*data property/iu
+	);
+});
+
+test('rejects closed-property, type, and property-value violations', () => {
+	const symbol = Symbol('extra');
+	const error = readDefinitionError(() =>
+		createParser({
+			unknownType: { type: 'array', flags: ['--array'], typo: true },
+			forgedParser: { type: Object.freeze({}), flags: ['--forged'] },
+			string: {
 				type: 'string',
-				flags: ['--source'],
+				flags: ['--string'],
+				repeat: 'sometimes',
 				required: 'yes',
 				multiple: 'yes',
-				allowEmpty: 1
+				extra: true,
+				[symbol]: true
 			},
-			enabled: {
+			multiple: {
+				type: 'string',
+				flags: ['--multiple'],
+				multiple: true,
+				repeat: 'last'
+			},
+			count: { type: 'count', flags: ['--count'], default: 1 }
+		})
+	);
+	assert(error.issues.some((issue) => issue.code === 'INVALID_OPTION_PROPERTY'));
+	assert(error.issues.some((issue) => issue.code === 'INVALID_VALUE_PARSER'));
+	assert(error.issues.some((issue) => issue.code === 'UNSUPPORTED_OPTION_PROPERTY'));
+	assert(
+		error.issues.some(
+			(issue) =>
+				issue.code === 'UNSUPPORTED_OPTION_PROPERTY' && issue.property === symbol
+		)
+	);
+	assert(
+		error.issues.some(
+			(issue) =>
+				issue.code === 'UNSUPPORTED_OPTION_PROPERTY' &&
+				issue.option === 'unknownType' &&
+				issue.property === 'typo'
+		)
+	);
+});
+
+test('validates all flag lists and global ownership', () => {
+	const sparse = ['--sparse'];
+	sparse.length = 2;
+	const error = readDefinitionError(() =>
+		createParser({
+			missing: { type: 'string' },
+			empty: { type: 'string', flags: [] },
+			sparse: { type: 'string', flags: sparse },
+			invalid: { type: 'string', flags: ['name', '--bad!', '-?'] },
+			first: { type: 'boolean', flags: ['--same'] },
+			second: {
 				type: 'boolean',
-				flags: ['--enabled'],
-				negatedFlag: 1,
-				default: 'yes'
+				flags: ['--second'],
+				falseFlags: ['--same', '--second']
 			}
 		})
 	);
-
+	assert(error.issues.some((issue) => issue.code === 'INVALID_FLAG'));
+	const duplicates = error.issues.filter((issue) => issue.code === 'DUPLICATE_FLAG');
 	assert.deepStrictEqual(
-		error.issues.map((issue) => [issue.code, issue.property]),
+		duplicates.map((issue) => [
+			issue.flag,
+			issue.property,
+			issue.conflictingOption,
+			issue.conflictingProperty
+		]),
 		[
-			['INVALID_DEFINITION_PROPERTY', 'required'],
-			['INVALID_DEFINITION_PROPERTY', 'multiple'],
-			['INVALID_DEFINITION_PROPERTY', 'allowEmpty'],
-			['INVALID_DEFINITION_PROPERTY', 'default'],
-			['INVALID_DEFINITION_PROPERTY', 'negatedFlag']
+			['--same', 'falseFlags', 'first', 'flags'],
+			['--second', 'falseFlags', 'second', 'flags']
 		]
 	);
 });
 
-test('compilation creates a deeply immutable lookup snapshot', () => {
-	const flags = ['--item'];
-	const defaults = ['base'];
-	const definitions = {
-		items: {
-			type: 'string',
-			flags,
-			multiple: true,
-			default: defaults
-		}
-	};
-	const compiled = compileDefinitions(definitions);
-	const parser = createParser(definitions);
-
-	assert.strictEqual(Object.isFrozen(compiled), true);
-	assert.strictEqual(Object.isFrozen(compiled.options), true);
-	assert.strictEqual(Object.isFrozen(compiled.flagBindings), true);
-	assert.strictEqual(Object.isFrozen(compiled.options[0]), true);
-	assert.strictEqual(Object.isFrozen(compiled.options[0].flags), true);
-	assert.strictEqual(Object.isFrozen(compiled.options[0].defaultValue), true);
-	assert.strictEqual(Object.isFrozen(compiled.flagBindings['--item']), true);
-
-	flags[0] = '--changed';
-	defaults[0] = 'changed';
-	assert.strictEqual(compiled.flagBindings['--changed'], undefined);
-	assert.deepStrictEqual(compiled.options[0].defaultValue, ['base']);
-
-	assert.strictEqual(Object.isFrozen(parser), true);
-	const result = parser.parse({ args: [] });
-	assert.strictEqual(result.success, true);
-	assert.deepStrictEqual(result.values.items, ['base']);
-	const explicit = parser.parse({ args: ['--item', 'value'] });
-	assert.strictEqual(explicit.success, true);
-	assert.deepStrictEqual(explicit.values.items, ['value']);
-});
-
-test('DefinitionError and its diagnostics are immutable', () => {
+test('rejects presence, default, and optional-inline conflicts', () => {
+	const sparseDefault = ['value'];
+	sparseDefault.length = 2;
 	const error = readDefinitionError(() =>
 		createParser({
-			source: {
+			requiredDefault: {
+				type: 'integer',
+				flags: ['--required-default'],
+				required: true,
+				default: 1
+			},
+			requiredMultipleDefault: {
 				type: 'string',
-				flags: ['--source'],
+				flags: ['--required-multiple-default'],
+				multiple: true,
+				required: true,
+				default: ['fallback']
+			},
+			badDefault: {
+				type: value.integer({ minimum: 0 }),
+				flags: ['--bad-default'],
+				default: -1
+			},
+			badMultipleDefault: {
+				type: 'number',
+				flags: ['--bad-multiple-default'],
+				multiple: true,
+				default: [1, 'two']
+			},
+			sparseMultipleDefault: {
+				type: 'string',
+				flags: ['--sparse-default'],
+				multiple: true,
+				default: sparseDefault
+			},
+			missingImplicit: {
+				type: 'string',
+				flags: ['--missing-implicit'],
+				valueMode: 'optional-inline'
+			},
+			conflictingImplicit: {
+				type: 'string',
+				flags: ['--conflicting-implicit'],
+				implicitValue: 'value'
+			},
+			badImplicit: {
+				type: 'integer',
+				flags: ['--bad-implicit'],
+				valueMode: 'optional-inline',
+				implicitValue: 'one'
+			}
+		})
+	);
+	assert.deepStrictEqual(
+		error.issues.map((issue) => issue.code),
+			[
+				'CONFLICTING_OPTION_PROPERTIES',
+				'CONFLICTING_OPTION_PROPERTIES',
+				'INVALID_DEFAULT',
+			'INVALID_DEFAULT',
+			'INVALID_DEFAULT',
+			'INVALID_OPTION_PROPERTY',
+			'CONFLICTING_OPTION_PROPERTIES',
+			'INVALID_OPTION_PROPERTY'
+		]
+	);
+});
+
+test('snapshots definitions, defaults, implicit values, and custom values', () => {
+	let snapshotCount = 0;
+	const objectValue = value.custom({
+		parse(raw) {
+			return { success: true, value: { text: raw } };
+		},
+		accepts(candidate) {
+			return (
+				typeof candidate === 'object' &&
+				candidate !== null &&
+				typeof candidate.text === 'string'
+			);
+		},
+		snapshot(candidate) {
+			snapshotCount += 1;
+			return { text: candidate.text };
+		}
+	});
+	const flags = ['--item'];
+	const defaultValue = { text: 'default' };
+	const implicitValue = { text: 'implicit' };
+	const definitions = {
+		item: { type: objectValue, flags, default: defaultValue },
+		mode: {
+			type: objectValue,
+			flags: ['--mode'],
+			valueMode: 'optional-inline',
+			implicitValue
+		}
+	};
+	const parser = createParser(definitions);
+	flags[0] = '--changed';
+	defaultValue.text = 'changed';
+	implicitValue.text = 'changed';
+
+	const first = parser.parse({ argv: ['--mode'] });
+	const second = parser.parse({ argv: ['--mode'] });
+	assert.strictEqual(first.success, true);
+	assert.strictEqual(second.success, true);
+	assert.deepStrictEqual(first.values.item, { text: 'default' });
+	assert.deepStrictEqual(first.values.mode, { text: 'implicit' });
+	assert.notStrictEqual(first.values.item, second.values.item);
+	assert.notStrictEqual(first.values.mode, second.values.mode);
+	assert.strictEqual(snapshotCount, 6);
+	assert.strictEqual(Object.isFrozen(parser), true);
+});
+
+test('snapshots every custom multiple-default element for each parse', () => {
+	let snapshotCount = 0;
+	const objectValue = value.custom({
+		parse(raw) {
+			return { success: true, value: { text: raw } };
+		},
+		accepts(candidate) {
+			return (
+				typeof candidate === 'object' &&
+				candidate !== null &&
+				typeof candidate.text === 'string'
+			);
+		},
+		snapshot(candidate) {
+			snapshotCount += 1;
+			return { text: candidate.text };
+		}
+	});
+	const parser = createParser({
+		items: {
+			type: objectValue,
+			flags: ['--item'],
+			multiple: true,
+			default: [{ text: 'one' }, { text: 'two' }]
+		}
+	});
+	assert.strictEqual(snapshotCount, 2);
+	const first = parser.parse({ argv: [] });
+	const second = parser.parse({ argv: [] });
+	assert.strictEqual(first.success, true);
+	assert.strictEqual(second.success, true);
+	assert.strictEqual(snapshotCount, 6);
+	assert.deepStrictEqual(first.values.items, [{ text: 'one' }, { text: 'two' }]);
+	assert.notStrictEqual(first.values.items, second.values.items);
+	assert.notStrictEqual(first.values.items[0], second.values.items[0]);
+});
+
+test('DefinitionError diagnostics and conflict arrays are immutable', () => {
+	const error = readDefinitionError(() =>
+		createParser({
+			value: {
+				type: 'string',
+				flags: ['--value'],
 				required: true,
 				default: 'fallback'
 			}
 		})
 	);
-
 	assert.strictEqual(Object.isFrozen(error.issues), true);
 	assert.strictEqual(Object.isFrozen(error.issues[0]), true);
 	assert.strictEqual(Object.isFrozen(error.issues[0].properties), true);
 	assert.throws(() => error.issues.push({}), TypeError);
 });
 
-test('handles special option names without changing object prototypes', () => {
-	const definitions = JSON.parse(
-		'{"__proto__":{"type":"string","flags":["--prototype"],"required":true}}'
-	);
-	const parser = createParser(definitions);
-	const result = parser.parse({ args: ['--prototype', 'safe'] });
-
+test('supports null-prototype definitions and special option names safely', () => {
+	const prototypeOption = Object.assign(Object.create(null), {
+		type: 'string',
+		flags: ['--prototype'],
+		required: true
+	});
+	const definitions = Object.create(null);
+	definitions.__proto__ = prototypeOption;
+	definitions.constructor = {
+		type: 'boolean',
+		flags: ['--constructor']
+	};
+	definitions.toString = {
+		type: 'count',
+		flags: ['-t']
+	};
+	const result = createParser(definitions).parse({
+		argv: ['--prototype', 'safe', '--constructor', '-tt']
+	});
 	assert.strictEqual(result.success, true);
-	assert.strictEqual(Object.hasOwn(result.values, '__proto__'), true);
+	assert.strictEqual(Object.getPrototypeOf(result.values), null);
 	assert.strictEqual(result.values.__proto__, 'safe');
-	assert.strictEqual(Object.getPrototypeOf(result.values), Object.prototype);
+	assert.strictEqual(result.values.constructor, true);
+	assert.strictEqual(result.values.toString, 2);
+	assert.strictEqual(result.specified.constructor, true);
 });

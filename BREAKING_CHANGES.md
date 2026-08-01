@@ -2,6 +2,85 @@
 
 This document records migrations between incompatible public releases.
 
+## Version 3
+
+Version 3 expands value parsing and conventional short-flag grammar while
+making argv terminology and extension points precise. Version 2 names are
+removed rather than aliased.
+
+### Definitions
+
+```ts
+import { createParser, value } from "argv-flags";
+
+const parser = createParser({
+  output: { type: "string", flags: ["-o", "--output"], required: true },
+  jobs: {
+    type: value.integer({ minimum: 1 }),
+    flags: ["-j", "--jobs"],
+    default: 1,
+  },
+  color: {
+    type: value.choice(["auto", "always", "never"]),
+    flags: ["--color"],
+    valueMode: "optional-inline",
+    implicitValue: "auto",
+  },
+  verbose: {
+    type: "boolean",
+    flags: ["-v", "--verbose"],
+    falseFlags: ["--no-verbose"],
+  },
+  quiet: { type: "count", flags: ["-q"] },
+});
+```
+
+- Replace boolean `negatedFlag: "--no-name"` with
+  `falseFlags: ["--no-name"]`.
+- Empty strings are rejected by `"string"`; use
+  `value.string({ empty: "allow" })` when they are valid.
+- `"number"` now accepts only finite decimal syntax. Use `"integer"` or
+  `value.integer()` for safe integers.
+- `multiple: true` works with every value parser and produces a readonly array.
+- Scalar and boolean repetition uses `repeat: "error" | "first" | "last"`.
+- `type: "count"` produces a number starting at zero.
+
+### Parse settings and results
+
+| Version 2 | Version 3 |
+| --- | --- |
+| `args` | `argv` |
+| `allowUnknownFlags: false` | `unknownFlagPolicy: "error"` |
+| `allowUnknownFlags: true` | `unknownFlagPolicy: "collect"` |
+| `argumentsAfterDoubleDash` | `afterDoubleDash` |
+| `unknownArguments` | `unknownFlags` |
+| unknown `argument` | `argvElement` |
+| unknown `index` | `argvIndex` |
+
+`flagPlacement: "before-positionals"` stops recognizing flags after the
+first positional argument. The default, `"interspersed"`, continues to parse
+flags until `--`.
+
+### Grammar and diagnostics
+
+Short value flags now accept attached values (`-ofile` and `-o=file`) and can
+end a cluster (`-abofile`). Boolean-only cluster restrictions are removed.
+Optional-inline options use an `implicitValue` for bare flags and never consume
+the next argv element.
+
+| Version 2 | Version 3 |
+| --- | --- |
+| `MISSING_FLAG_VALUE` | `MISSING_OPTION_VALUE` |
+| `INVALID_FLAG_VALUE` / `EMPTY_FLAG_VALUE` | `INVALID_OPTION_VALUE` |
+| `UNEXPECTED_FLAG_VALUE` | `UNEXPECTED_OPTION_VALUE` |
+| `DUPLICATE_OPTION` | `REPEATED_OPTION` |
+| `UNSUPPORTED_DEFINITION_PROPERTY` | `UNSUPPORTED_OPTION_PROPERTY` |
+| `INVALID_DEFINITION_PROPERTY` | `INVALID_OPTION_PROPERTY` |
+| `CONFLICTING_DEFINITION_PROPERTIES` | `CONFLICTING_OPTION_PROPERTIES` |
+
+Unknown long flags and rejected `value.choice()` inputs may include advisory
+`suggestions`. Suggestions do not change whether parsing succeeds.
+
 ## Version 2
 
 Version 2 replaces the schema-oriented procedural API with a compiled parser

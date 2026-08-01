@@ -1,4 +1,4 @@
-import { createParser } from "../dist/index.js";
+import { createParser, value } from "../dist/index.js";
 
 const defaults = {
   mode: "safe",
@@ -12,12 +12,12 @@ const configFile = {
 };
 
 const parser = createParser({
-  mode: { type: "string", flags: ["--mode"] },
-  retries: { type: "number", flags: ["--retries"] },
+  mode: { type: value.choice(["safe", "balanced", "strict"]), flags: ["--mode"] },
+  retries: { type: value.integer({ minimum: 0 }), flags: ["--retries"] },
   verbose: { type: "boolean", flags: ["--verbose"], default: false },
 });
 
-const parsed = parser.parse({ args: process.argv.slice(2) });
+const parsed = parser.parse({ argv: process.argv.slice(2) });
 if (!parsed.success) {
   process.stderr.write(`${JSON.stringify({ success: false, issues: parsed.issues }, null, 2)}\n`);
   process.exit(2);
