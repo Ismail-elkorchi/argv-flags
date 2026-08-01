@@ -6,10 +6,16 @@
 object. It deliberately leaves commands, help rendering, process exits,
 configuration discovery, and prompts to the application.
 
-The public runtime facade has three exports: `createParser`, `DefinitionError`,
-and `value`. `createParser()` validates and snapshots definitions once, builds
-prototype-safe flag lookups, and returns a frozen reusable parser. Parsing has
-no live dependency on the caller's definition objects.
+The public runtime facade has four exports: `createParser`,
+`createParserFromMap`, `DefinitionError`, and `value`. `createParser()`
+validates and snapshots literal definitions once, builds prototype-safe flag
+lookups, and returns a frozen reusable parser. Parsing has no live dependency
+on the caller's definition objects.
+
+`createParserFromMap()` serves integration libraries that assemble definition
+maps dynamically. It accepts the closed `OptionDefinitionMap` union while
+leaving the stronger per-property inference of literal definitions to
+`createParser()`.
 
 ## Vocabulary
 

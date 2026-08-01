@@ -58,6 +58,14 @@ if (result.success) {
 Definitions and parse settings are closed objects: misspelled or unsupported
 properties fail in TypeScript and at runtime.
 
+Libraries that compose definitions dynamically can type their assembled record
+as `OptionDefinitionMap` and compile it with `createParserFromMap()`. Direct
+callers should prefer `createParser()` because it preserves option-specific
+value inference and rejects extra fields through variables. Composition
+libraries can extend the exported scalar, multiple, boolean, and count
+definition types with their own presentation metadata instead of reproducing
+the option grammar.
+
 ## Grammar
 
 - Long values use `--name value`, `--name=value`, or `--name=`.

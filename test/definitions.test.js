@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { DefinitionError, createParser, value } from '../dist/index.js';
+import {
+	DefinitionError,
+	createParser,
+	createParserFromMap,
+	value
+} from '../dist/index.js';
 
 const readDefinitionError = (callback) => {
 	try {
@@ -36,6 +41,19 @@ test('rejects invalid definition containers, option names, and accessors', () =>
 		() => createParser({ accessor }),
 		/option "accessor".*data property/iu
 	);
+});
+
+test('dynamically composed maps use the same definition compiler', () => {
+	const definitions = Object.fromEntries([
+		['source', { type: 'string', flags: ['--source'], required: true }],
+		['verbose', { type: 'boolean', flags: ['--verbose'] }]
+	]);
+	const result = createParserFromMap(definitions).parse({
+		argv: ['--source', 'input.txt', '--verbose']
+	});
+	assert.equal(result.success, true);
+	if (!result.success) return;
+	assert.deepEqual({ ...result.values }, { source: 'input.txt', verbose: true });
 });
 
 test('rejects closed-property, type, and property-value violations', () => {
