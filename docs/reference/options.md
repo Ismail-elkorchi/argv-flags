@@ -96,7 +96,7 @@ kind are rejected.
 
 ## Custom values
 
-`value.custom()` accepts a synchronous, closed protocol:
+`value.custom()` accepts a synchronous, closed callback object:
 
 ```ts
 const identifier = value.custom({
@@ -118,13 +118,13 @@ const identifier = value.custom({
 `accepts()` validates defaults, implicit values, decoded values, and snapshots.
 Use `snapshot()` when outputs are mutable; the parser calls it at ownership
 boundaries. A failure may add `reason`, a shallow-copied `details` object, and
-up to three `suggestions`. Promise results and malformed protocol results are
+up to three `suggestions`. Promise results and malformed callback results are
 programming errors.
 
-The resulting `ValueParser` implements the versioned structural protocol
-`argv-flags/value-parser/v1`. Compatible physical installations and registry
-editions can exchange value parsers; identity is not tied to a module-local
-registry. `parse`, `accepts`, and `snapshot` are public protocol operations.
+The resulting object implements the public `ValueParser` interface. Compatible
+physical installations and registry editions can exchange value parsers by
+that shape; identity is not tied to a module-local registry. `parse`, `accepts`,
+and `snapshot` are its public operations.
 
 ## Flag and argv grammar
 

@@ -71,11 +71,10 @@ spans, ordinary arguments, unknown flags, and the exact `--` location without
 decoding values or applying defaults. `parse()` and `scan()` use the same
 grammar implementation.
 
-`ValueParser` is a stable structural protocol. A value parser created by a
+`ValueParser` is a public structural interface. A value parser created by a
 compatible second installation, bundle, or npm/JSR copy can be used in a
-definition compiled by another copy. Protocol implementations must remain
-synchronous and must validate and snapshot values according to the exported
-contract.
+definition compiled by another copy. Implementations must remain synchronous
+and must validate and snapshot values according to that interface.
 
 ## Grammar
 

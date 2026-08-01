@@ -84,9 +84,9 @@ Invalid definitions throw `DefinitionError` with a frozen `issues` array.
 | `CONFLICTING_OPTION_PROPERTIES` | Valid properties cannot be combined. |
 | `INVALID_FLAG` | A configured flag is malformed. |
 | `DUPLICATE_FLAG` | More than one entry claims a flag spelling. |
-| `INVALID_VALUE_PARSER` | `type` does not implement the supported value-parser protocol. |
+| `INVALID_VALUE_PARSER` | `type` does not implement the `ValueParser` interface. |
 | `INVALID_DEFAULT` | A default violates the selected value contract. |
 
 Compilation reports every independently discoverable definition issue.
-Malformed settings and custom protocols are programming errors and throw
+Malformed settings and custom callback objects are programming errors and throw
 `TypeError`; exceptions from custom callbacks propagate unchanged.

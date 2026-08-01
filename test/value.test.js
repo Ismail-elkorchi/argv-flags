@@ -67,8 +67,8 @@ test('uses exact one-edit choice suggestions without prefix or normalization gue
 	assert.strictEqual(emptyChoice.issues[0]?.suggestions, undefined);
 });
 
-test('captures custom callbacks and exposes the stable value-parser protocol', () => {
-	const protocol = {
+test('captures custom callbacks and exposes a structural value parser', () => {
+	const callbacks = {
 		parse(raw) {
 			return { success: true, value: raw };
 		},
@@ -76,29 +76,49 @@ test('captures custom callbacks and exposes the stable value-parser protocol', (
 			return typeof candidate === 'string';
 		}
 	};
-	const custom = value.custom(protocol);
-	protocol.parse = () => ({ success: false, message: 'Changed.' });
+	const custom = value.custom(callbacks);
+	callbacks.parse = () => ({ success: false, message: 'Changed.' });
 	const parser = createParser({ custom: { type: custom, flags: ['--custom'] } });
 	const result = parser.parse({ argv: ['--custom=original'] });
 	assert.strictEqual(result.success, true);
 	assert.strictEqual(result.values.custom, 'original');
 	assert.strictEqual(Object.isFrozen(custom), true);
 	assert.deepStrictEqual(Reflect.ownKeys(custom), [
-		'protocol',
 		'parse',
 		'accepts',
 		'snapshot'
 	]);
-	assert.strictEqual(custom.protocol, 'argv-flags/value-parser/v1');
 
 	assert.throws(
-		() => value.custom({ ...protocol, snapshot: undefined }),
+		() => value.custom({ ...callbacks, snapshot: undefined }),
 		/snapshot must be a function/u
 	);
 	assert.throws(
-		() => value.custom({ ...protocol, extra: true }),
+		() => value.custom({ ...callbacks, extra: true }),
 		/unsupported property/u
 	);
+});
+
+test('accepts value parsers by their public method shape', () => {
+	class UppercaseParser {
+		parse(raw) {
+			return { success: true, value: raw.toUpperCase() };
+		}
+
+		accepts(candidate) {
+			return typeof candidate === 'string';
+		}
+
+		snapshot(candidate) {
+			return candidate;
+		}
+	}
+
+	const result = createParser({
+		name: { type: new UppercaseParser(), flags: ['--name'] }
+	}).parse({ argv: ['--name=casey'] });
+	assert.strictEqual(result.success, true);
+	assert.strictEqual(result.values.name, 'CASEY');
 });
 
 test('value parsers interoperate across independent module instances', async () => {

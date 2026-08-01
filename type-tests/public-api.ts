@@ -3,7 +3,7 @@ import {
 	createParser,
 	createParserFromMap,
 	value,
-	type CustomValueParserProtocol,
+	type CustomValueParserCallbacks,
 	type DefinitionIssue,
 	type InferValues,
 	type MultipleValueOptionDefinition,
@@ -12,14 +12,15 @@ import {
 	type ParserResult,
 	type ScalarValueOptionDefinition,
 	type UnknownFlag,
-	type ValueParseContext
+	type ValueParseContext,
+	type ValueParser
 } from 'argv-flags';
 
 interface Identifier {
 	readonly text: string;
 }
 
-const identifierProtocol: CustomValueParserProtocol<Identifier> = {
+const identifierCallbacks: CustomValueParserCallbacks<Identifier> = {
 	parse(raw) {
 		return raw.startsWith('id:')
 			? { success: true, value: { text: raw.slice(3) } }
@@ -37,7 +38,7 @@ const identifierProtocol: CustomValueParserProtocol<Identifier> = {
 		return { text: candidate.text };
 	}
 };
-const identifier = value.custom(identifierProtocol);
+const identifier = value.custom(identifierCallbacks);
 
 const parser = createParser({
 	source: { type: 'string', flags: ['-s', '--source'], required: true },
@@ -148,7 +149,7 @@ const definitionIssue: DefinitionIssue = {
 const definitionError: DefinitionError = new DefinitionError([definitionIssue]);
 void definitionError;
 
-const protocol: CustomValueParserProtocol<Identifier> = {
+const callbacks: CustomValueParserCallbacks<Identifier> = {
 	parse(raw, context: ValueParseContext) {
 		void context;
 		return { success: true, value: { text: raw } };
@@ -157,7 +158,23 @@ const protocol: CustomValueParserProtocol<Identifier> = {
 		return typeof candidate === 'object' && candidate !== null && 'text' in candidate;
 	}
 };
-value.custom(protocol);
+value.custom(callbacks);
+
+const structuralParser: ValueParser<Identifier> = {
+	parse(raw) {
+		return { success: true, value: { text: raw } };
+	},
+	accepts(candidate) {
+		return typeof candidate === 'object' && candidate !== null && 'text' in candidate;
+	},
+	snapshot(candidate) {
+		if (typeof candidate !== 'object' || candidate === null || !('text' in candidate)) {
+			throw new TypeError('Expected an identifier.');
+		}
+		return { text: String(candidate.text) };
+	}
+};
+createParser({ identifier: { type: structuralParser, flags: ['--identifier'] } });
 
 const composedDefinitions: OptionDefinitionMap = {
 	input: { type: 'string', flags: ['--input'] },
@@ -322,7 +339,7 @@ const valueSettingsWithUnknownProperty = { minimum: 0, typo: true } as const;
 // @ts-expect-error value settings are closed through variables
 value.integer(valueSettingsWithUnknownProperty);
 
-const protocolWithUnknownProperty = {
+const callbacksWithUnknownProperty = {
 	parse(raw: string) {
 		return { success: true, value: raw } as const;
 	},
@@ -331,8 +348,8 @@ const protocolWithUnknownProperty = {
 	},
 	typo: true
 };
-// @ts-expect-error custom protocols are closed through variables
-value.custom(protocolWithUnknownProperty);
+// @ts-expect-error custom callback objects are closed through variables
+value.custom(callbacksWithUnknownProperty);
 
 value.custom({
 	parse(raw) {
@@ -341,7 +358,7 @@ value.custom({
 	accepts(candidate): candidate is string {
 		return typeof candidate === 'string';
 	},
-	// @ts-expect-error custom protocols are closed inline
+	// @ts-expect-error custom callback objects are closed inline
 	typo: true
 });
 

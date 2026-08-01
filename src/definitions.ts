@@ -277,7 +277,7 @@ const resolveValueParser = (
 	if (type !== null && typeof type === 'object') {
 		issues.push({
 			code: 'INVALID_VALUE_PARSER',
-			message: `Option "${option}" type does not implement the argv-flags value-parser protocol.`,
+			message: `Option "${option}" type does not implement the ValueParser interface.`,
 			option,
 			property: 'type'
 		});
