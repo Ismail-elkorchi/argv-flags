@@ -1,26 +1,20 @@
 # Changelog
 
-## 4.0.0 - 2026-08-01
+## 3.0.0 - 2026-08-01
 
-- Replaced module-instance value-parser identity with a stable structural
-  protocol that interoperates across duplicate installations and npm/JSR
-  package copies.
+- Replaced module-instance value-parser identity with a structural interface
+  that interoperates across duplicate installations and npm/JSR package
+  copies.
 - Added `parser.scan()` for immutable, indexed option-span and argument
   classification without decoding values.
 - Retained unknown-long-flag suggestions in collected unknown records.
 - Included documentation and TypeScript sources in published archives so README
   links and source/declaration maps resolve.
-
-## 3.1.0 - 2026-08-01
-
 - Added `createParserFromMap()` and `OptionDefinitionMap` for libraries that
   assemble already typed option definitions dynamically. Literal callers keep
   the stricter inference and exactness checks of `createParser()`.
 - Exposed the option-definition types used by composition libraries so an
   adapter can add metadata without duplicating argv grammar types.
-
-## 3.0.0 - 2026-08-01
-
 - Added typed value parsers for configured strings, bounded decimal numbers,
   safe integers, literal choices, and synchronous custom values.
 - Added optional-inline values, attached short values, value-taking cluster
@@ -31,8 +25,8 @@
   `flagPlacement`.
 - Renamed result location fields around argv terminology and added deterministic
   suggestions for unknown long flags and rejected literal choices.
-- Closed value factories, custom protocols, parse settings, option definitions,
-  and diagnostic unions at the TypeScript and runtime boundaries.
+- Closed value factories, custom callback objects, parse settings, option
+  definitions, and diagnostic unions at the TypeScript and runtime boundaries.
 - Strengthened definition snapshots, custom-value ownership, immutable results,
   and independently discoverable definition diagnostics.
 - Removed the version 2 grammar, names, diagnostics, and compatibility surface.

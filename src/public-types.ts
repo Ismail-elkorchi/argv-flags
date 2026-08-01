@@ -1,7 +1,5 @@
-/** Stable structural protocol implemented by value parsers. */
+/** Runtime value parser. Compatible package copies interoperate by this shape. */
 export interface ValueParser<out Output> {
-	/** Identifies the interoperable value-parser protocol. */
-	readonly protocol: 'argv-flags/value-parser/v1';
 	/** Decodes one raw value synchronously. */
 	readonly parse: (
 		raw: string,
@@ -52,8 +50,8 @@ export type ValueParseResult<Output> =
 			readonly suggestions?: readonly string[];
 	  };
 
-/** Protocol used by {@link value.custom}. */
-export interface CustomValueParserProtocol<Output> {
+/** Callbacks accepted by {@link value.custom}. */
+export interface CustomValueParserCallbacks<Output> {
 	/** Decodes one raw value synchronously. */
 	readonly parse: (
 		raw: string,

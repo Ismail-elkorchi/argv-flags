@@ -1,5 +1,5 @@
 import type {
-	CustomValueParserProtocol,
+	CustomValueParserCallbacks,
 	ValueParseContext,
 	ValueParseResult,
 	ValueParser
@@ -28,8 +28,8 @@ export interface NumericValueSettings {
 	readonly maximum?: number;
 }
 
-/** @internal Custom protocol shape that preserves output inference. */
-export interface InferredCustomProtocol<Output> {
+/** @internal Custom callback shape that preserves output inference. */
+export interface InferredCustomCallbacks<Output> {
 	/** Decodes one raw string synchronously. */
 	readonly parse: (
 		raw: string,
@@ -63,15 +63,15 @@ export interface ValueNamespace {
 	readonly choice: <const Values extends readonly [string, ...string[]]>(
 		values: Values
 	) => ValueParser<Values[number]>;
-	/** Creates a parser from a synchronous custom protocol. */
+	/** Creates a parser from synchronous custom callbacks. */
 	readonly custom: <
 		Output,
-		const Protocol extends object = CustomValueParserProtocol<Output>
+		const Callbacks extends object = CustomValueParserCallbacks<Output>
 	>(
-		protocol: InferredCustomProtocol<Output> &
-			Protocol &
+		callbacks: InferredCustomCallbacks<Output> &
+			Callbacks &
 			Record<
-				Exclude<keyof Protocol, keyof CustomValueParserProtocol<Output>>,
+				Exclude<keyof Callbacks, keyof CustomValueParserCallbacks<Output>>,
 				never
 			>
 	) => ValueParser<Output>;
@@ -92,7 +92,7 @@ interface RuntimeValueFailure {
 
 export type RuntimeValueResult = RuntimeValueSuccess | RuntimeValueFailure;
 
-/** Validated runtime behavior read from the public value-parser protocol. */
+/** Validated runtime behavior read from a public value parser. */
 export interface RuntimeValueParser {
 	readonly parse: (
 		raw: string,
@@ -107,7 +107,6 @@ const createValueParser = <Output>(
 	runtime: RuntimeValueParser
 ): ValueParser<Output> => {
 	const parser = Object.assign(Object.create(null) as Record<string, unknown>, {
-		protocol: 'argv-flags/value-parser/v1' as const,
 		parse: runtime.parse,
 		accepts: runtime.accepts,
 		snapshot: runtime.snapshot,
@@ -475,17 +474,7 @@ const normalizeValueResult = (candidate: unknown): RuntimeValueResult => {
 	};
 };
 
-const ownDataValue = (
-	candidate: PlainRecord,
-	property: string
-): unknown => {
-	const descriptor = Object.getOwnPropertyDescriptor(candidate, property);
-	return descriptor !== undefined && 'value' in descriptor
-		? descriptor.value
-		: undefined;
-};
-
-/** Reads the stable value-parser protocol implemented by compatible package copies. */
+/** Reads the structural value-parser interface implemented by compatible copies. */
 export function getRuntimeValueParser(
 	candidate: ValueParser<unknown>
 ): RuntimeValueParser;
@@ -496,14 +485,13 @@ export function getRuntimeValueParser(
 export function getRuntimeValueParser(
 	candidate: unknown
 ): RuntimeValueParser | undefined {
-	if (!isPlainRecord(candidate)) return undefined;
-	const protocol = ownDataValue(candidate, 'protocol');
-	const parseCandidate = ownDataValue(candidate, 'parse');
-	const acceptsCandidate = ownDataValue(candidate, 'accepts');
-	const snapshotCandidate = ownDataValue(candidate, 'snapshot');
-	const choicesCandidate = ownDataValue(candidate, 'choices');
+	if (candidate === null || typeof candidate !== 'object') return undefined;
+	const parser = candidate as Readonly<Record<string, unknown>>;
+	const parseCandidate = parser['parse'];
+	const acceptsCandidate = parser['accepts'];
+	const snapshotCandidate = parser['snapshot'];
+	const choicesCandidate = parser['choices'];
 	if (
-		protocol !== 'argv-flags/value-parser/v1' ||
 		typeof parseCandidate !== 'function' ||
 		typeof acceptsCandidate !== 'function' ||
 		typeof snapshotCandidate !== 'function' ||
@@ -558,41 +546,41 @@ export function getRuntimeValueParser(
 
 const customFactory = <
 	Output,
-	const Protocol extends object = CustomValueParserProtocol<Output>
+	const Callbacks extends object = CustomValueParserCallbacks<Output>
 >(
-	protocol: InferredCustomProtocol<Output> &
-		Protocol &
+	callbacks: InferredCustomCallbacks<Output> &
+		Callbacks &
 		Record<
 			Exclude<
-				keyof Protocol,
-				keyof CustomValueParserProtocol<Output>
+				keyof Callbacks,
+				keyof CustomValueParserCallbacks<Output>
 			>,
 			never
 		>
 ): ValueParser<Output> => {
-	if (!isPlainRecord(protocol)) {
-		throw new TypeError('Custom value parser protocol must be a plain object.');
+	if (!isPlainRecord(callbacks)) {
+		throw new TypeError('Custom value parser callbacks must be a plain object.');
 	}
-	assertOwnDataProperties(protocol, 'Custom value parser protocol');
-	for (const property of Reflect.ownKeys(protocol)) {
+	assertOwnDataProperties(callbacks, 'Custom value parser callbacks');
+	for (const property of Reflect.ownKeys(callbacks)) {
 		if (
 			typeof property !== 'string' ||
 			(property !== 'parse' && property !== 'accepts' && property !== 'snapshot')
 		) {
 			throw new TypeError(
-				`Custom value parser protocol has unsupported property "${String(property)}".`
+				`Custom value parser callbacks have unsupported property "${String(property)}".`
 			);
 		}
 	}
-	const parseCandidate = readOwnDataProperty(protocol, 'parse');
-	const acceptsCandidate = readOwnDataProperty(protocol, 'accepts');
-	const snapshotCallback: unknown = hasOwn(protocol, 'snapshot')
-		? readOwnDataProperty(protocol, 'snapshot')
+	const parseCandidate = readOwnDataProperty(callbacks, 'parse');
+	const acceptsCandidate = readOwnDataProperty(callbacks, 'accepts');
+	const snapshotCallback: unknown = hasOwn(callbacks, 'snapshot')
+		? readOwnDataProperty(callbacks, 'snapshot')
 		: undefined;
 	if (typeof parseCandidate !== 'function' || typeof acceptsCandidate !== 'function') {
 		throw new TypeError('Custom value parser requires parse and accepts callbacks.');
 	}
-	if (hasOwn(protocol, 'snapshot') && typeof snapshotCallback !== 'function') {
+	if (hasOwn(callbacks, 'snapshot') && typeof snapshotCallback !== 'function') {
 		throw new TypeError('Custom value parser snapshot must be a function.');
 	}
 	const parseCallback = parseCandidate as (
