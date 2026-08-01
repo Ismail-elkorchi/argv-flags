@@ -1,7 +1,6 @@
 import type {
 	// @ts-expect-error exactness helpers are internal
 	ExactParseSettings,
-	// @ts-expect-error definition helpers are internal
 	OptionDefinition,
 	// @ts-expect-error namespace support types are internal
 	ValueNamespace,
@@ -11,9 +10,11 @@ import type {
 
 type InternalTypes = [
 	ExactParseSettings,
-	OptionDefinition,
 	ValueNamespace,
 	ValueParseSuccess
 ];
 declare const internalTypes: InternalTypes;
 void internalTypes;
+
+declare const optionDefinition: OptionDefinition;
+void optionDefinition;

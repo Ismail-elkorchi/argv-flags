@@ -1,6 +1,12 @@
 # Changelog
 
-## Unreleased
+## 3.1.0 - 2026-08-01
+
+- Added `createParserFromMap()` and `OptionDefinitionMap` for libraries that
+  assemble already typed option definitions dynamically. Literal callers keep
+  the stricter inference and exactness checks of `createParser()`.
+- Exposed the option-definition types used by composition libraries so an
+  adapter can add metadata without duplicating argv grammar types.
 
 ## 3.0.0 - 2026-08-01
 

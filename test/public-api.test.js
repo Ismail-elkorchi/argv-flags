@@ -6,6 +6,7 @@ test('exports only the public facade at runtime', () => {
 	assert.deepStrictEqual(Object.keys(publicApi), [
 		'DefinitionError',
 		'createParser',
+		'createParserFromMap',
 		'value'
 	]);
 	assert.strictEqual(Object.isFrozen(publicApi.value), true);

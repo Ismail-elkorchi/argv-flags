@@ -217,20 +217,20 @@ export type FlagName = `-${string}`;
 /** @internal A non-empty list of flag spellings. */
 export type FlagList = readonly [FlagName, ...FlagName[]];
 
-/** @internal Repetition behavior for scalar and boolean options. */
+/** Repetition behavior for scalar and boolean options. */
 export type RepeatPolicy = 'error' | 'first' | 'last';
 
 /** @internal Whether a value is required or available only inline. */
 export type ValueMode = 'required' | 'optional-inline';
 
-/** @internal Value parsers supported by value-taking definitions. */
+/** Value parsers supported by value-taking option definitions. */
 export type ValueType =
 	| 'string'
 	| 'number'
 	| 'integer'
 	| ValueParser<unknown>;
 
-/** @internal Output selected by a value parser. */
+/** Decoded output selected by an option value parser. */
 export type ValueOf<Type extends ValueType> = Type extends 'string'
 	? string
 	: Type extends 'number' | 'integer'
@@ -261,7 +261,7 @@ type ValueInputDefinition<Type extends ValueType> =
 			readonly implicitValue: ValueOf<Type>;
 	  };
 
-/** @internal Scalar value option definition. */
+/** One scalar value-taking option definition. */
 export type ScalarValueOptionDefinition<Type extends ValueType> = {
 	readonly flags: FlagList;
 	readonly type: Type;
@@ -270,7 +270,7 @@ export type ScalarValueOptionDefinition<Type extends ValueType> = {
 } & PresenceDefinition<ValueOf<Type>> &
 	ValueInputDefinition<Type>;
 
-/** @internal Multiple-value option definition. */
+/** One accumulating value-taking option definition. */
 export type MultipleValueOptionDefinition<Type extends ValueType> = {
 	readonly flags: FlagList;
 	readonly type: Type;
@@ -278,7 +278,7 @@ export type MultipleValueOptionDefinition<Type extends ValueType> = {
 } & PresenceDefinition<readonly ValueOf<Type>[]> &
 	ValueInputDefinition<Type>;
 
-/** @internal Boolean option definition. */
+/** One boolean option definition. */
 export type BooleanOptionDefinition = {
 	readonly flags: FlagList;
 	readonly type: 'boolean';
@@ -286,18 +286,27 @@ export type BooleanOptionDefinition = {
 	readonly repeat?: RepeatPolicy;
 } & PresenceDefinition<boolean>;
 
-/** @internal Count option definition. */
+/** One occurrence-counting option definition. */
 export interface CountOptionDefinition {
+	/** Concrete flag spellings that increment the count. */
 	readonly flags: FlagList;
+	/** Selects occurrence-counting behavior. */
 	readonly type: 'count';
 }
 
-/** @internal Definition for one logical option. */
+/** @internal Distributes value definitions so built-in defaults stay correlated. */
+type ValueOptionDefinition<Type extends ValueType> = Type extends ValueType
+	? ScalarValueOptionDefinition<Type> | MultipleValueOptionDefinition<Type>
+	: never;
+
+/** Definition for one logical option. */
 export type OptionDefinition =
-	| ScalarValueOptionDefinition<ValueType>
-	| MultipleValueOptionDefinition<ValueType>
+	| ValueOptionDefinition<ValueType>
 	| BooleanOptionDefinition
 	| CountOptionDefinition;
+
+/** A runtime-composed map whose entries are already valid option definitions. */
+export type OptionDefinitionMap = Readonly<Record<string, OptionDefinition>>;
 
 /** @internal Definitions keyed by their logical option names. */
 export type OptionDefinitions = Readonly<Record<string, unknown>>;

@@ -1,12 +1,16 @@
 import {
 	DefinitionError,
 	createParser,
+	createParserFromMap,
 	value,
 	type CustomValueParserProtocol,
 	type DefinitionIssue,
 	type InferValues,
+	type MultipleValueOptionDefinition,
+	type OptionDefinitionMap,
 	type ParseIssue,
 	type ParserResult,
+	type ScalarValueOptionDefinition,
 	type UnknownFlag,
 	type ValueParseContext
 } from 'argv-flags';
@@ -154,6 +158,26 @@ const protocol: CustomValueParserProtocol<Identifier> = {
 	}
 };
 value.custom(protocol);
+
+const composedDefinitions: OptionDefinitionMap = {
+	input: { type: 'string', flags: ['--input'] },
+	verbose: { type: 'boolean', flags: ['--verbose'] }
+};
+const composedParser = createParserFromMap(composedDefinitions);
+void composedParser;
+
+const scalarDefinition: ScalarValueOptionDefinition<'integer'> = {
+	type: 'integer',
+	flags: ['--retries'],
+	default: 2
+};
+const multipleDefinition: MultipleValueOptionDefinition<typeof identifier> = {
+	type: identifier,
+	flags: ['--include'],
+	multiple: true
+};
+void scalarDefinition;
+void multipleDefinition;
 
 const inlineCustom = value.custom({
 	parse(raw) {
