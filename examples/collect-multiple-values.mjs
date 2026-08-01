@@ -1,11 +1,11 @@
 import { createParser } from "../dist/index.js";
 
 const parser = createParser({
-  include: { type: "string", flags: ["--include"], multiple: true },
+  include: { type: "string", flags: ["-I", "--include"], multiple: true },
 });
 
 const result = parser.parse({
-  args: process.argv.slice(2),
+  argv: process.argv.slice(2),
 });
 
 if (!result.success) {

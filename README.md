@@ -1,6 +1,10 @@
 # argv-flags
 
-Typed CLI option parsing for Node, Deno, and Bun.
+Strict, typed argv parsing for Node, Deno, and Bun.
+
+`argv-flags` compiles a small option definition into a reusable parser. It
+handles flags, values, short clusters, positionals, and `--`; it does not own
+commands, help text, prompts, or process exit behavior.
 
 ## Install
 
@@ -10,83 +14,93 @@ bun add argv-flags
 deno add jsr:@ismail-elkorchi/argv-flags
 ```
 
-## Quickstart
+## Use
 
 ```ts
-import { createParser } from "argv-flags";
+import { createParser, value } from "argv-flags";
 
 const parser = createParser({
   source: { type: "string", flags: ["-s", "--source"], required: true },
-  retries: { type: "number", flags: ["--retries"], default: 2 },
+  retries: {
+    type: value.integer({ minimum: 0 }),
+    flags: ["-r", "--retries"],
+    default: 2,
+  },
+  color: {
+    type: value.choice(["auto", "always", "never"]),
+    flags: ["--color"],
+    valueMode: "optional-inline",
+    implicitValue: "auto",
+  },
   verbose: {
     type: "boolean",
     flags: ["-v", "--verbose"],
-    negatedFlag: "--no-verbose",
-    default: false,
+    falseFlags: ["--no-verbose"],
   },
-  include: {
-    type: "string",
-    flags: ["--include"],
-    multiple: true,
-  },
+  include: { type: "string", flags: ["-I", "--include"], multiple: true },
+  quiet: { type: "count", flags: ["-q"] },
 });
 
 const result = parser.parse();
 
 if (result.success) {
-  console.log(result.values.source);
-  console.log(result.values.include);
+  console.log(result.values);
+  console.log(result.positionals);
+  console.log(result.afterDoubleDash);
 } else {
   console.error(result.issues);
   process.exitCode = 2;
 }
 ```
 
-`createParser()` validates and snapshots the definitions once. The returned
-parser can parse any number of argument arrays without rebuilding its immutable
-flag lookup. `parse()` reads the current runtime's arguments; pass
-`{ args: [...] }` when parsing an explicit array.
+`parse()` reads the current runtime's argv. Use
+`parser.parse({ argv: ["--source", "input.txt"] })` for an explicit vector.
+Definitions and parse settings are closed objects: misspelled or unsupported
+properties fail in TypeScript and at runtime.
 
 ## Grammar
 
-- Long value flags accept `--name value` and `--name=value`.
-- Short value flags accept `-n value`; `-n=value` is invalid.
-- Short clusters such as `-abc` contain boolean flags only.
-- Boolean flags never consume the following argument and reject inline values.
-- Negation uses an explicitly declared `negatedFlag`.
-- Every recognized value-taking occurrence consumes exactly one value.
-- A separate value may begin with `-`; only `--` interrupts value consumption.
-- Multiple strings require one flag occurrence per value.
-- Repeating a scalar option is an error.
-- `--` always ends parsing. Earlier positionals and later arguments are returned
-  separately.
-- Defaults apply only when an option is absent.
-- Failed results contain diagnostics and never expose values or defaults.
+- Long values use `--name value`, `--name=value`, or `--name=`.
+- Short values use `-n value`, `-nvalue`, or `-n=value`.
+- Boolean and count flags can be clustered: `-vvq`.
+- A value-taking short flag owns the rest of its cluster: `-abofile` gives
+  `file` to `-o` after processing `-a` and `-b`.
+- A required separate value may begin with `-`; only the exact element `--`
+  interrupts it.
+- Optional-inline flags consume no following argv element.
+- Unknown flags consume no following argv element.
+- `--` always ends option parsing and later elements are returned in
+  `afterDoubleDash`.
 
-Unknown flags are errors unless `allowUnknownFlags` is enabled. Collected
-unknown flags retain the complete argument, parsed flag, and original index.
+Scalar and boolean repetition defaults to an error. Choose `repeat: "first"`
+or `repeat: "last"` when repetition is intentional. Set `multiple: true` to
+collect every successfully decoded occurrence. Count options increment once
+per occurrence.
 
-## Terminology
+## Values and errors
 
-- An **argument** is one raw string in the input `args` array.
-- A **flag** is a literal CLI name such as `-v` or `--verbose`.
-- An **option** is one logical configured value selected by one or more flags.
-- A **value** is the parsed string, number, boolean, or string array belonging
-  to an option.
-- A **positional** is an argument encountered before `--` that was not consumed.
+Built-in definitions accept `"string"`, `"number"`, and `"integer"`. The
+`value` namespace adds configured strings, bounded numbers and safe integers,
+literal choices, and synchronous custom parsers.
 
-## Compatibility
+Successful results alone expose `values`; failed results expose structured
+`issues` and never expose partial values or defaults. Unknown flags can either
+produce issues or be collected with their original argv location.
 
-- ESM only.
-- Node `>=24`, Deno, and Bun.
-- No runtime dependencies.
+## Runtime support
+
+- ESM only
+- Node.js 24 or later
+- Deno 2.6 or later
+- Bun 1.3 or later
+- Zero runtime dependencies
 
 ## Documentation
 
-- [Options, grammar, and parse settings](docs/reference/options.md)
+- [Options, values, grammar, and parse settings](docs/reference/options.md)
 - [Results and diagnostics](docs/reference/parse-result.md)
 - [First CLI tutorial](docs/tutorial/first-cli.md)
-- [Breaking changes](BREAKING_CHANGES.md)
+- [Breaking changes across versions](BREAKING_CHANGES.md)
 
 ## License
 

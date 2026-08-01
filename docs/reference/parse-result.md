@@ -2,81 +2,89 @@
 
 ## Result union
 
-`parse()` returns a TypeScript union discriminated by `success`:
+`parse()` returns a union discriminated by `success`:
 
 ```ts
-const result = parser.parse({ args });
+const result = parser.parse({ argv });
 
 if (result.success) {
-  console.log(result.values);
+  use(result.values);
 } else {
-  console.error(result.issues);
+  report(result.issues);
 }
 ```
 
 Every result contains:
 
-- `success`;
-- `specified`: whether a recognized flag for each option appeared;
-- `positionals`: unconsumed arguments encountered before `--`;
-- `argumentsAfterDoubleDash`: every argument after `--`;
-- `unknownArguments`: unknown flags collected when allowed.
+- `specified`: whether each option had a recognized flag;
+- `positionals`: positional arguments before `--`;
+- `afterDoubleDash`: argv elements after `--`;
+- `unknownFlags`: unknown flags with source locations.
 
-A successful result contains `values` and no `issues`. Required, defaulted, and
-multiple string options have guaranteed values in TypeScript. Other value
-properties are optional.
+A successful result contains `values`. Required, defaulted, multiple, and count
+options are guaranteed properties; optional scalars and booleans are omitted
+when absent. A failed result contains `issues` and no `values`, partial decoded
+state, or defaults.
 
-A failed result contains `issues` and no `values`. Parsed fragments and
-defaults are deliberately unavailable, so invalid input cannot resemble a
-successful fallback.
+Package-owned result objects and arrays are shallow-frozen. `values` and
+`specified` use null prototypes, so option names such as `__proto__` are safe.
 
-Absent optional values are omitted rather than stored as `undefined`.
+## Unknown flags
 
-## Unknown arguments
-
-Each collected unknown flag retains its source:
+An unknown long flag preserves its original argv element:
 
 ```ts
 {
-  argument: "--other=value",
+  argvElement: "--other=value",
   flag: "--other",
-  index: 3,
+  argvIndex: 3,
+  inlineValue: "value",
 }
 ```
 
-For a short cluster, each unknown member uses its expanded flag spelling and
-the index of the complete cluster argument.
+An unknown short-cluster member additionally has `offset`, the zero-based
+UTF-16 position of the member in the complete argv element.
 
-## Parse issue codes
+## Parse issues
+
+`ParseIssue` is a closed union. Narrow it with `issue.code`.
 
 | Code | Meaning |
 | --- | --- |
-| `UNKNOWN_FLAG` | No definition recognizes the flag. |
-| `MISSING_FLAG_VALUE` | A string or number flag has no value. |
-| `INVALID_FLAG_VALUE` | A supplied value cannot be converted. |
-| `UNEXPECTED_FLAG_VALUE` | A boolean flag received an inline value. |
-| `EMPTY_FLAG_VALUE` | A string is empty when empty values are disabled. |
-| `INVALID_FLAG_SYNTAX` | A short flag uses attached-value syntax or a value-taking flag appears in a cluster. |
-| `MISSING_REQUIRED_OPTION` | A required option did not occur. |
-| `DUPLICATE_OPTION` | A scalar option occurred more than once. |
+| `UNKNOWN_FLAG` | No definition owns the flag. |
+| `INVALID_FLAG_SYNTAX` | A flag-like argv element is malformed. |
+| `MISSING_OPTION_VALUE` | A required-value occurrence has no available value. |
+| `INVALID_OPTION_VALUE` | The selected value parser rejected the raw value. |
+| `UNEXPECTED_OPTION_VALUE` | A boolean or count flag received inline text. |
+| `REPEATED_OPTION` | A scalar or boolean using `repeat: "error"` succeeded more than once. |
+| `MISSING_REQUIRED_OPTION` | A required option had no recognized occurrence. |
 
-Argument-related issues include the parsed `flag`, complete `argument`, and
-zero-based `index`. Issues for recognized definitions also include `option`.
-Use `code` for program logic and `message` for people.
+Flag-related issues retain `flag`, `argvElement`, and `argvIndex`; short members
+also retain `offset`. Invalid values include `rawValue`, `valueArgvIndex`, and
+whether the value was inline. Choice, custom-value, and unknown-long failures
+may include frozen `suggestions` without changing the failure.
+
+Scan issues follow argv and cluster order. Missing-required issues follow in
+definition order. Use codes and structured fields for program logic; messages
+are for display.
 
 ## Definition diagnostics
 
-Invalid definitions throw `DefinitionError`. The error contains an immutable
-`issues` array with these codes:
+Invalid definitions throw `DefinitionError` with a frozen `issues` array.
 
 | Code | Meaning |
 | --- | --- |
-| `INVALID_DEFINITIONS` | The definitions container is not an object. |
-| `INVALID_OPTION_NAME` | An option key is not a valid string name. |
-| `INVALID_OPTION_DEFINITION` | An option definition is not an object. |
-| `INVALID_OPTION_TYPE` | `type` is missing or unsupported. |
-| `UNSUPPORTED_DEFINITION_PROPERTY` | A definition contains an unknown field. |
-| `INVALID_DEFINITION_PROPERTY` | A supported field has an invalid value. |
-| `CONFLICTING_DEFINITION_PROPERTIES` | Valid fields cannot be used together. |
-| `INVALID_FLAG` | A positive or negated flag is malformed. |
-| `DUPLICATE_FLAG` | A flag is repeated or assigned more than once. |
+| `INVALID_DEFINITIONS` | The definitions container is invalid. |
+| `INVALID_OPTION_NAME` | An option key is invalid. |
+| `INVALID_OPTION_DEFINITION` | One definition is not a plain object. |
+| `UNSUPPORTED_OPTION_PROPERTY` | A property is outside the selected definition shape. |
+| `INVALID_OPTION_PROPERTY` | A supported property has an invalid value. |
+| `CONFLICTING_OPTION_PROPERTIES` | Valid properties cannot be combined. |
+| `INVALID_FLAG` | A configured flag is malformed. |
+| `DUPLICATE_FLAG` | More than one entry claims a flag spelling. |
+| `INVALID_VALUE_PARSER` | `type` is an object not produced by `value`. |
+| `INVALID_DEFAULT` | A default violates the selected value contract. |
+
+Compilation reports every independently discoverable definition issue.
+Malformed settings and custom protocols are programming errors and throw
+`TypeError`; exceptions from custom callbacks propagate unchanged.

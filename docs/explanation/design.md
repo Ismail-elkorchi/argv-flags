@@ -1,46 +1,42 @@
 # Design
 
-## Public facade
+## Boundary
 
-`createParser()` compiles definitions into an immutable lookup and returns one
-reusable `parse()` method. `DefinitionError` exposes structured compilation
-failures. Lookup data, runtime detection, and parsing state remain internal.
+`argv-flags` is the layer between an argv vector and a trustworthy typed option
+object. It deliberately leaves commands, help rendering, process exits,
+configuration discovery, and prompts to the application.
+
+The public runtime facade has three exports: `createParser`, `DefinitionError`,
+and `value`. `createParser()` validates and snapshots definitions once, builds
+prototype-safe flag lookups, and returns a frozen reusable parser. Parsing has
+no live dependency on the caller's definition objects.
 
 ## Vocabulary
 
-- **argument**: one raw input string;
-- **flag**: a literal CLI spelling parsed from an argument;
-- **option**: one logical configured value selected by flags;
-- **value**: parsed data belonging to an option;
-- **positional**: an unconsumed argument before `--`.
+- **argv vector**: the complete input string array;
+- **argv element**: one string in that vector;
+- **option**: one logical configured setting;
+- **flag**: a configured spelling that selects an option;
+- **positional argument**: an argv element classified as positional;
+- **raw value**: text supplied to a value parser.
 
-## Deterministic classification
+These words are not interchangeable in fields or diagnostics.
 
-The parser classifies each argument once, from left to right:
+## Classification
 
-1. `--` ends parsing.
-2. Non-flag arguments become positionals.
-3. Long flags may contain one inline value.
-4. A two-character short argument is one short flag.
-5. Longer short arguments are boolean clusters, except unsupported `=`
-   syntax.
+The scanner moves left to right. It separates long forms, short members,
+positional arguments, and the `--` boundary. Boolean and count members continue
+a cluster; a value-taking member owns the remaining suffix. A bare required
+value flag consumes exactly one following argv element, while optional-inline
+and unknown flags consume none.
 
-A recognized non-boolean flag consumes exactly one value. Without a long
-inline value, it consumes the next argument verbatim unless that argument is
-`--`. Boolean flags consume nothing. Unknown flags also consume nothing.
+Recognition, conversion, repetition, and final materialization are distinct.
+That separation lets failed results retain exact source locations without
+exposing partial values or successful-looking defaults.
 
-Scalar duplication and malformed clusters are errors. Multiple strings collect
-one value per occurrence. Defaults are materialized only after an error-free
-parse and only for absent options.
+## Ownership and runtime independence
 
-## Result boundary
-
-Successful results expose typed values. Failed results expose diagnostics.
-They never expose partial values or defaults. Both forms retain occurrence
-metadata, positionals, post-`--` arguments, and allowed unknown flags.
-
-## Runtime boundary
-
-The default entrypoint imports no runtime-specific module. Runtime arguments
-are read from `globalThis` only when `parse()` is called. Explicit `args`
-always take precedence.
+Package-owned result containers are fresh and shallow-frozen. Custom parsers
+define snapshot behavior for their own mutable values. The default entrypoint
+imports no runtime-specific module: argv is read from `globalThis` only when
+`parse()` is called, and explicit `argv` always wins.

@@ -1,6 +1,6 @@
-# Pass arguments through after `--`
+# Pass argv elements through after `--`
 
-`--` always ends flag parsing:
+The exact argv element `--` always ends option parsing:
 
 ```sh
 node examples/pass-through-double-dash.mjs \
@@ -10,13 +10,14 @@ node examples/pass-through-double-dash.mjs \
   --limit=2
 ```
 
-The result contains:
+The successful result contains:
 
 ```json
 {
   "profile": "strict",
-  "argumentsAfterDoubleDash": ["--trace", "--limit=2"]
+  "afterDoubleDash": ["--trace", "--limit=2"]
 }
 ```
 
-Forward `argumentsAfterDoubleDash` when exact child-command ordering matters.
+`--` itself is omitted. Forward `afterDoubleDash` when exact child-command
+ordering matters.

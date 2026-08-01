@@ -5,7 +5,7 @@ const parser = createParser({
 });
 
 const result = parser.parse({
-  args: process.argv.slice(2),
+  argv: process.argv.slice(2),
 });
 
 if (!result.success) {
@@ -18,7 +18,7 @@ process.stdout.write(
     {
       success: true,
       profile: result.values.profile,
-      argumentsAfterDoubleDash: result.argumentsAfterDoubleDash,
+      afterDoubleDash: result.afterDoubleDash,
     },
     null,
     2,

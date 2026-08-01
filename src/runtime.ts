@@ -1,4 +1,4 @@
-import { isStringArray } from './value-guards.ts';
+import { isDenseStringArray } from './value-guards.ts';
 
 const readStringArrayProperty = (
 	value: unknown,
@@ -8,20 +8,19 @@ const readStringArrayProperty = (
 		return undefined;
 	}
 	const propertyValue = (value as Record<string, unknown>)[property];
-	return isStringArray(propertyValue) ? propertyValue : undefined;
+	return isDenseStringArray(propertyValue) ? propertyValue : undefined;
 };
 
-/** Resolves raw CLI arguments without importing a runtime-specific module. */
-export const resolveRuntimeArguments = (): string[] => {
+/** Resolves argv without importing a runtime-specific module. */
+export const resolveRuntimeArgv = (): string[] => {
 	const runtimeGlobals = globalThis as typeof globalThis & {
 		process?: unknown;
 		Deno?: unknown;
 	};
-	const processArguments = readStringArrayProperty(runtimeGlobals.process, 'argv');
-	if (processArguments !== undefined) {
-		return processArguments.slice(2);
+	const processArgv = readStringArrayProperty(runtimeGlobals.process, 'argv');
+	if (processArgv !== undefined) {
+		return processArgv.slice(2);
 	}
-
-	const denoArguments = readStringArrayProperty(runtimeGlobals.Deno, 'args');
-	return denoArguments === undefined ? [] : [...denoArguments];
+	const denoArgv = readStringArrayProperty(runtimeGlobals.Deno, 'args');
+	return denoArgv === undefined ? [] : [...denoArgv];
 };

@@ -1,26 +1,31 @@
-# Collect unknown flag arguments
+# Collect unknown flags
 
-Set `allowUnknownFlags: true` when another parser or command will handle
+Use `unknownFlagPolicy: "collect"` when another parser or command owns
 unrecognized flags:
 
-```sh
-node examples/handle-unknown-flags.mjs --mode safe --extra=1 file.txt
+```ts
+const result = parser.parse({
+  argv,
+  unknownFlagPolicy: "collect",
+});
 ```
 
-`unknownArguments` contains:
+For `--other=1`, the result retains:
 
 ```json
-[
-  {
-    "argument": "--extra=1",
-    "flag": "--extra",
-    "index": 2
-  }
-]
+{
+  "argvElement": "--other=1",
+  "flag": "--other",
+  "argvIndex": 2,
+  "inlineValue": "1"
+}
 ```
 
-`positionals` contains `file.txt`.
+Unknown flags consume no following argv element. Under the default `"error"`
+policy the same record is retained and an `UNKNOWN_FLAG` issue is added.
 
-Without this setting, the issue contains `flag: "--extra"` and
-`argument: "--extra=1"`. The distinction preserves both the parsed flag name
-and the original argument.
+Run the example:
+
+```sh
+node examples/handle-unknown-flags.mjs --mode safe --other=1 file.txt
+```

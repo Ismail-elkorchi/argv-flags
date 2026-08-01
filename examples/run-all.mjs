@@ -5,9 +5,9 @@ import { fileURLToPath } from "node:url";
 
 const examplesDir = path.dirname(fileURLToPath(import.meta.url));
 
-function runExample(fileName, args = []) {
+function runExample(fileName, argv = []) {
   const scriptPath = path.join(examplesDir, fileName);
-  return spawnSync(process.execPath, [scriptPath, ...args], {
+  return spawnSync(process.execPath, [scriptPath, ...argv], {
     encoding: "utf8",
   });
 }
@@ -17,16 +17,16 @@ function parseJson(streamText) {
 }
 
 {
-  const result = runExample("first-cli.mjs", ["--src", "input.txt", "--dest", "output.txt"]);
+  const result = runExample("first-cli.mjs", ["--source", "input.txt", "--output", "output.txt"]);
   assert.equal(result.status, 0, result.stderr);
   const payload = parseJson(result.stdout);
   assert.equal(payload.success, true);
-  assert.equal(payload.values.src, "input.txt");
-  assert.equal(payload.values.dest, "output.txt");
+  assert.equal(payload.values.source, "input.txt");
+  assert.equal(payload.values.output, "output.txt");
 }
 
 {
-  const result = runExample("first-cli.mjs", ["--src", "input.txt"]);
+  const result = runExample("first-cli.mjs", ["--source", "input.txt"]);
   assert.equal(result.status, 2);
   const payload = parseJson(result.stderr);
   assert.equal(payload.success, false);
@@ -51,7 +51,7 @@ function parseJson(streamText) {
   ]);
   assert.equal(result.status, 0, result.stderr);
   const payload = parseJson(result.stdout);
-  assert.deepEqual(payload.argumentsAfterDoubleDash, ["--trace", "--limit=2"]);
+  assert.deepEqual(payload.afterDoubleDash, ["--trace", "--limit=2"]);
 }
 
 {
@@ -59,20 +59,17 @@ function parseJson(streamText) {
   assert.equal(result.status, 0, result.stderr);
   const payload = parseJson(result.stdout);
   assert.equal(payload.success, true);
-  assert.deepEqual(payload.unknownArguments, [
-    { argument: "--extra=1", flag: "--extra", index: 2 },
+  assert.deepEqual(payload.unknownFlags, [
+    { argvElement: "--extra=1", flag: "--extra", argvIndex: 2, inlineValue: "1" },
   ]);
   assert.deepEqual(payload.positionals, ["file.txt"]);
 }
 
 {
-  const result = runExample("parse-repeated-values.mjs", [
-    "--include",
-    "src",
-    "--include",
-    "test",
-    "--include",
-    "docs",
+  const result = runExample("collect-multiple-values.mjs", [
+    "-Isrc",
+    "-Itest",
+    "--include=docs",
   ]);
   assert.equal(result.status, 0, result.stderr);
   const payload = parseJson(result.stdout);
@@ -85,7 +82,7 @@ function parseJson(streamText) {
   assert.equal(result.status, 1);
   const payload = parseJson(result.stderr);
   assert.equal(payload.success, false);
-  assert.equal(payload.issues[0]?.code, "INVALID_FLAG_VALUE");
+  assert.equal(payload.issues[0]?.code, "INVALID_OPTION_VALUE");
 }
 
 process.stdout.write("examples:run argv-flags PASS\n");

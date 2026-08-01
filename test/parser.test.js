@@ -1,388 +1,469 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { createParser } from '../dist/index.js';
+import { createParser, value } from '../dist/index.js';
 
-test('supports long flags with separate and inline values', () => {
+const assertSuccess = (result) => {
+	assert.strictEqual(result.success, true);
+	return result;
+};
+
+const assertFailure = (result) => {
+	assert.strictEqual(result.success, false);
+	assert.strictEqual(Object.hasOwn(result, 'values'), false);
+	return result;
+};
+
+test('supports long separate, inline, and explicit empty values', () => {
 	const parser = createParser({
 		first: { type: 'string', flags: ['--first'] },
-		second: { type: 'string', flags: ['--second'] }
+		second: { type: 'string', flags: ['--second'] },
+		empty: { type: value.string({ empty: 'allow' }), flags: ['--empty'] }
 	});
-	const result = parser.parse({
-		args: ['--first', 'separate', '--second=inline']
-	});
-
-	assert.strictEqual(result.success, true);
-	assert.deepStrictEqual(result.values, {
+	const result = assertSuccess(
+		parser.parse({
+			argv: ['--first', 'separate', '--second=inline=rest', '--empty=']
+		})
+	);
+	assert.deepStrictEqual({ ...result.values }, {
 		first: 'separate',
-		second: 'inline'
+		second: 'inline=rest',
+		empty: ''
 	});
+
+	const rejected = assertFailure(
+		createParser({ name: { type: 'string', flags: ['--name'] } }).parse({
+			argv: ['--name=']
+		})
+	);
+	assert.strictEqual(rejected.issues[0]?.code, 'INVALID_OPTION_VALUE');
 });
 
-test('supports short flags with separate values and rejects attached values', () => {
-	const parser = createParser({
-		source: { type: 'string', flags: ['-s'] }
-	});
-	const separate = parser.parse({ args: ['-s', 'input.txt'] });
-	assert.strictEqual(separate.success, true);
-	assert.strictEqual(separate.values.source, 'input.txt');
-
-	const attached = parser.parse({ args: ['-s=input.txt'] });
-	assert.strictEqual(attached.success, false);
-	assert.strictEqual(attached.issues[0]?.code, 'INVALID_FLAG_SYNTAX');
-	assert.strictEqual(attached.issues[0]?.syntax, 'SHORT_ATTACHED_VALUE');
-	assert.strictEqual(Object.hasOwn(attached, 'values'), false);
-});
-
-test('expands boolean short clusters from left to right', () => {
+test('supports attached short values and value-taking cluster members', () => {
 	const parser = createParser({
 		all: { type: 'boolean', flags: ['-a'] },
 		brief: { type: 'boolean', flags: ['-b'] },
-		color: { type: 'boolean', flags: ['-c'] }
+		output: { type: 'string', flags: ['-o'] }
 	});
-	const result = parser.parse({ args: ['-abc'] });
-
-	assert.strictEqual(result.success, true);
-	assert.deepStrictEqual(result.values, {
-		all: true,
-		brief: true,
-		color: true
-	});
-	assert.deepStrictEqual(result.specified, {
-		all: true,
-		brief: true,
-		color: true
-	});
+	for (const [argvElement, expected] of [
+		['-ovalue', 'value'],
+		['-o=value', 'value'],
+		['-o=', ''],
+		['-o?!', '?!'],
+		['-aboarchive.tar', 'archive.tar'],
+		['-abo=archive.tar', 'archive.tar']
+	]) {
+		const result = parser.parse({ argv: [argvElement] });
+		if (expected === '') {
+			assert.strictEqual(assertFailure(result).issues[0]?.code, 'INVALID_OPTION_VALUE');
+		} else {
+			assert.strictEqual(assertSuccess(result).values.output, expected);
+		}
+	}
+	const separate = assertSuccess(parser.parse({ argv: ['-o', '--literal'] }));
+	assert.strictEqual(separate.values.output, '--literal');
 });
 
-test('rejects value-taking flags inside short clusters', () => {
+test('scans unknown short members before configured value members', () => {
 	const parser = createParser({
-		all: { type: 'boolean', flags: ['-a'] },
-		name: { type: 'string', flags: ['-n'] }
+		output: { type: 'string', flags: ['-o'] }
 	});
-	const result = parser.parse({ args: ['-an', 'value'] });
+	const collected = assertSuccess(
+		parser.parse({ argv: ['-xofile'], unknownFlagPolicy: 'collect' })
+	);
+	assert.strictEqual(collected.values.output, 'file');
+	assert.deepStrictEqual(collected.unknownFlags, [
+		{ argvElement: '-xofile', flag: '-x', argvIndex: 0, offset: 1 }
+	]);
 
-	assert.strictEqual(result.success, false);
-	assert.deepStrictEqual(result.positionals, ['value']);
-	assert.deepStrictEqual(result.issues, [
+	const failed = assertFailure(parser.parse({ argv: ['-xofile'] }));
+	assert.deepStrictEqual(
+		failed.issues.map((issue) => issue.code),
+		['UNKNOWN_FLAG']
+	);
+});
+
+test('supports explicit false flags, count clusters, and zero-value rules', () => {
+	const parser = createParser({
+		verbose: {
+			type: 'boolean',
+			flags: ['-v', '--verbose'],
+			falseFlags: ['--no-verbose'],
+			repeat: 'last'
+		},
+		quiet: { type: 'count', flags: ['-q'] }
+	});
+	const result = assertSuccess(
+		parser.parse({ argv: ['-qqq', '--verbose', '--no-verbose'] })
+	);
+	assert.strictEqual(result.values.verbose, false);
+	assert.strictEqual(result.values.quiet, 3);
+
+	const positional = assertSuccess(parser.parse({ argv: ['--verbose', 'false'] }));
+	assert.deepStrictEqual(positional.positionals, ['false']);
+	const longInline = assertFailure(parser.parse({ argv: ['--verbose=false'] }));
+	assert.strictEqual(longInline.issues[0]?.code, 'UNEXPECTED_OPTION_VALUE');
+	assert.strictEqual(longInline.issues[0]?.rawValue, 'false');
+	const shortInline = assertFailure(parser.parse({ argv: ['-q=3'] }));
+	assert.strictEqual(shortInline.issues[0]?.code, 'UNEXPECTED_OPTION_VALUE');
+});
+
+test('implements optional-inline values without consuming following elements', () => {
+	const parser = createParser({
+		verbose: { type: 'boolean', flags: ['-v'] },
+		color: {
+			type: value.choice(['auto', 'always', 'never']),
+			flags: ['-c', '--color'],
+			valueMode: 'optional-inline',
+			implicitValue: 'auto',
+			required: true
+		},
+		modes: {
+			type: 'string',
+			flags: ['--mode'],
+			multiple: true,
+			valueMode: 'optional-inline',
+			implicitValue: 'auto'
+		}
+	});
+	const bareLong = assertSuccess(parser.parse({ argv: ['--color', 'always'] }));
+	assert.strictEqual(bareLong.values.color, 'auto');
+	assert.deepStrictEqual(bareLong.positionals, ['always']);
+	assert.strictEqual(
+		assertSuccess(parser.parse({ argv: ['--color=always'] })).values.color,
+		'always'
+	);
+	assert.strictEqual(
+		assertSuccess(parser.parse({ argv: ['-cnever'] })).values.color,
+		'never'
+	);
+	assert.strictEqual(
+		assertSuccess(parser.parse({ argv: ['-c=always'] })).values.color,
+		'always'
+	);
+	const cluster = assertSuccess(parser.parse({ argv: ['-vc'] }));
+	assert.strictEqual(cluster.values.verbose, true);
+	assert.strictEqual(cluster.values.color, 'auto');
+	const multiple = assertSuccess(
+		parser.parse({ argv: ['--color', '--mode', '--mode=manual', '--mode'] })
+	);
+	assert.deepStrictEqual(multiple.values.modes, ['auto', 'manual', 'auto']);
+});
+
+test('applies scalar repetition policies and preserves multiple order', () => {
+	const parser = createParser({
+		error: { type: 'string', flags: ['--error'] },
+		first: { type: 'string', flags: ['--first'], repeat: 'first' },
+		last: { type: 'integer', flags: ['--last'], repeat: 'last' },
+		values: { type: 'number', flags: ['--value'], multiple: true }
+	});
+	const failure = assertFailure(
+		parser.parse({
+			argv: [
+				'--error=a',
+				'--error=b',
+				'--first=a',
+				'--first=b',
+				'--last=1',
+				'--last=2'
+			]
+		})
+	);
+	assert.strictEqual(failure.issues[0]?.code, 'REPEATED_OPTION');
+	const success = assertSuccess(
+		parser.parse({
+			argv: [
+				'--first=a',
+				'--first=b',
+				'--last=1',
+				'--last=2',
+				'--value=1.5',
+				'--value',
+				'-2'
+			]
+		})
+	);
+	assert.strictEqual(success.values.first, 'a');
+	assert.strictEqual(success.values.last, 2);
+	assert.deepStrictEqual(success.values.values, [1.5, -2]);
+});
+
+test('returns indexed unknown flags and deterministic suggestions', () => {
+	const parser = createParser({
+		version: { type: 'boolean', flags: ['--version'] },
+		verbose: { type: 'boolean', flags: ['--verbose'] },
+		verify: {
+			type: 'boolean',
+			flags: ['--verify'],
+			falseFlags: ['--no-verify']
+		}
+	});
+	const typo = assertFailure(parser.parse({ argv: ['--verison'] }));
+	assert.deepStrictEqual(typo.unknownFlags, [
+		{ argvElement: '--verison', flag: '--verison', argvIndex: 0 }
+	]);
+	assert.deepStrictEqual(typo.issues[0]?.suggestions, ['--version']);
+	assert.match(typo.issues[0]?.message, /Did you mean "--version"/u);
+
+	const prefix = assertFailure(parser.parse({ argv: ['--ver'] }));
+	assert.deepStrictEqual(prefix.issues[0]?.suggestions, [
+		'--version',
+		'--verbose',
+		'--verify'
+	]);
+	const falseFlagPrefix = assertFailure(parser.parse({ argv: ['--no-ver'] }));
+	assert.deepStrictEqual(falseFlagPrefix.issues[0]?.suggestions, ['--no-verify']);
+	const collected = assertSuccess(
+		parser.parse({
+			argv: ['-xyz', '--other=value'],
+			unknownFlagPolicy: 'collect'
+		})
+	);
+	assert.deepStrictEqual(collected.unknownFlags, [
+		{ argvElement: '-xyz', flag: '-x', argvIndex: 0, offset: 1 },
+		{ argvElement: '-xyz', flag: '-y', argvIndex: 0, offset: 2 },
+		{ argvElement: '-xyz', flag: '-z', argvIndex: 0, offset: 3 },
 		{
-			code: 'INVALID_FLAG_SYNTAX',
-			message: 'Value-taking flag "-n" cannot appear in short cluster "-an".',
-			option: 'name',
-			flag: '-n',
-			argument: '-an',
-			index: 0,
-			syntax: 'NON_BOOLEAN_SHORT_CLUSTER'
+			argvElement: '--other=value',
+			flag: '--other',
+			argvIndex: 1,
+			inlineValue: 'value'
 		}
 	]);
 });
 
-test('boolean options consume no value and reject long inline values', () => {
+test('reports malformed flag-like elements without classifying them as unknown', () => {
+	const parser = createParser({});
+	for (const argvElement of ['---name', '--=value', '-?', '-=value']) {
+		const result = assertFailure(parser.parse({ argv: [argvElement] }));
+		assert.strictEqual(result.issues[0]?.code, 'INVALID_FLAG_SYNTAX');
+		assert.deepStrictEqual(result.unknownFlags, []);
+	}
+	const dash = assertSuccess(parser.parse({ argv: ['-'] }));
+	assert.deepStrictEqual(dash.positionals, ['-']);
+});
+
+test('supports both positional modes and always honors double dash', () => {
 	const parser = createParser({
 		verbose: { type: 'boolean', flags: ['--verbose'] }
 	});
-	const bare = parser.parse({ args: ['--verbose', 'false'] });
-	assert.strictEqual(bare.success, true);
-	assert.strictEqual(bare.values.verbose, true);
-	assert.deepStrictEqual(bare.positionals, ['false']);
+	const interspersed = assertSuccess(
+		parser.parse({ argv: ['first', '--verbose', 'second'] })
+	);
+	assert.strictEqual(interspersed.values.verbose, true);
+	assert.deepStrictEqual(interspersed.positionals, ['first', 'second']);
 
-	const inline = parser.parse({ args: ['--verbose=false'] });
-	assert.strictEqual(inline.success, false);
-	assert.deepStrictEqual(inline.issues[0], {
-		code: 'UNEXPECTED_FLAG_VALUE',
-		message: 'Boolean flag "--verbose" does not accept a value.',
-		option: 'verbose',
-		flag: '--verbose',
-		argument: '--verbose=false',
-		value: 'false',
-		index: 0
-	});
+	const beforePositionals = assertSuccess(
+		parser.parse({
+			argv: ['first', '--verbose', '--', '--after'],
+			flagPlacement: 'before-positionals'
+		})
+	);
+	assert.strictEqual(beforePositionals.values.verbose, undefined);
+	assert.deepStrictEqual(beforePositionals.positionals, ['first', '--verbose']);
+	assert.deepStrictEqual(beforePositionals.afterDoubleDash, ['--after']);
 });
 
-test('uses only explicitly declared negated flags', () => {
-	const parser = createParser({
-		color: {
-			type: 'boolean',
-			flags: ['--color'],
-			negatedFlag: '--without-color'
-		}
-	});
-	const negated = parser.parse({ args: ['--without-color'] });
-	assert.strictEqual(negated.success, true);
-	assert.strictEqual(negated.values.color, false);
-
-	const derivedName = parser.parse({ args: ['--no-color'] });
-	assert.strictEqual(derivedName.success, false);
-	assert.strictEqual(derivedName.issues[0]?.code, 'UNKNOWN_FLAG');
-});
-
-test('known value-taking flags consume one following argument verbatim', () => {
-	const parser = createParser({
-		name: { type: 'string', flags: ['--name'] },
-		verbose: { type: 'boolean', flags: ['--verbose'] },
-		count: { type: 'number', flags: ['--count'] }
-	});
-	const stringResult = parser.parse({ args: ['--name', '--verbose'] });
-	assert.strictEqual(stringResult.success, true);
-	assert.strictEqual(stringResult.values.name, '--verbose');
-	assert.strictEqual(stringResult.values.verbose, undefined);
-
-	const numberResult = parser.parse({ args: ['--count', '-5'] });
-	assert.strictEqual(numberResult.success, true);
-	assert.strictEqual(numberResult.values.count, -5);
-});
-
-test('repeated values require repeated option occurrences', () => {
-	const parser = createParser({
-		include: { type: 'string', flags: ['--include'], multiple: true }
-	});
-	const result = parser.parse({
-		args: ['--include', 'src', 'position.txt', '--include=tests']
-	});
-
-	assert.strictEqual(result.success, true);
-	assert.deepStrictEqual(result.values.include, ['src', 'tests']);
-	assert.deepStrictEqual(result.positionals, ['position.txt']);
-});
-
-test('scalar duplicates are errors and values are absent on failure', () => {
+test('double dash interrupts a waiting required value', () => {
 	const parser = createParser({
 		name: { type: 'string', flags: ['--name'] }
 	});
-	const result = parser.parse({
-		args: ['--name', 'first', '--name', 'second']
-	});
-
-	assert.strictEqual(result.success, false);
-	assert.strictEqual(Object.hasOwn(result, 'values'), false);
-	assert.deepStrictEqual(result.issues, [
-		{
-			code: 'DUPLICATE_OPTION',
-			message: 'Option "name" was specified more than once.',
-			option: 'name',
-			flag: '--name',
-			argument: '--name',
-			index: 2
-		}
-	]);
+	const result = assertFailure(
+		parser.parse({ argv: ['before', '--name', '--', '--literal', 'after'] })
+	);
+	assert.strictEqual(result.issues[0]?.code, 'MISSING_OPTION_VALUE');
+	assert.deepStrictEqual(result.positionals, ['before']);
+	assert.deepStrictEqual(result.afterDoubleDash, ['--literal', 'after']);
 });
 
-test('double dash always ends parsing and separates later arguments', () => {
+test('implements decimal, safe-integer, and literal-choice parsers', () => {
 	const parser = createParser({
-		name: { type: 'string', flags: ['--name'] }
-	});
-	const result = parser.parse({
-		args: ['before.txt', '--name', '--', '--literal', 'after.txt']
-	});
-
-	assert.strictEqual(result.success, false);
-	assert.deepStrictEqual(result.positionals, ['before.txt']);
-	assert.deepStrictEqual(result.argumentsAfterDoubleDash, [
-		'--literal',
-		'after.txt'
-	]);
-	assert.strictEqual(result.issues[0]?.code, 'MISSING_FLAG_VALUE');
-});
-
-test('allowed unknown flags retain their argument, flag, and original index', () => {
-	const parser = createParser({
-		all: { type: 'boolean', flags: ['-a'] },
-		color: { type: 'boolean', flags: ['-c'] }
-	});
-	const result = parser.parse({
-		args: ['file.txt', '-axc', '--other=value'],
-		allowUnknownFlags: true
-	});
-
-	assert.strictEqual(result.success, true);
-	assert.deepStrictEqual(result.values, { all: true, color: true });
-	assert.deepStrictEqual(result.unknownArguments, [
-		{ argument: '-axc', flag: '-x', index: 1 },
-		{ argument: '--other=value', flag: '--other', index: 2 }
-	]);
-});
-
-test('unknown flags never consume the following argument', () => {
-	const parser = createParser({});
-	const result = parser.parse({ args: ['--other', 'value'] });
-
-	assert.strictEqual(result.success, false);
-	assert.deepStrictEqual(result.positionals, ['value']);
-	assert.deepStrictEqual(result.issues[0], {
-		code: 'UNKNOWN_FLAG',
-		message: 'Unknown flag "--other".',
-		flag: '--other',
-		argument: '--other',
-		index: 0
-	});
-});
-
-test('defaults apply only when an option is absent', () => {
-	const defaultItems = ['base'];
-	const parser = createParser({
-		count: { type: 'number', flags: ['--count'], default: 2 },
-		items: {
-			type: 'string',
-			flags: ['--item'],
-			multiple: true,
-			default: defaultItems
+		numbers: { type: 'number', flags: ['--number'], multiple: true },
+		integer: {
+			type: value.integer({ minimum: -2, maximum: 2 }),
+			flags: ['--integer']
 		},
-		optionalItems: {
-			type: 'string',
-			flags: ['--optional-item'],
-			multiple: true
+		mode: {
+			type: value.choice(['auto', 'always', 'off']),
+			flags: ['--mode']
 		}
 	});
+	const valid = assertSuccess(
+		parser.parse({
+			argv: [
+				'--number=1',
+				'--number=1.',
+				'--number=.5',
+				'--number=-2.5e2',
+				'--integer=2',
+				'--mode=auto'
+			]
+		})
+	);
+	assert.deepStrictEqual(valid.values.numbers, [1, 1, 0.5, -250]);
+	assert.strictEqual(valid.values.integer, 2);
 
-	const absent = parser.parse({ args: [] });
-	assert.strictEqual(absent.success, true);
-	assert.deepStrictEqual(absent.values, {
+	for (const raw of ['Infinity', ' 1', '1_000', '1e', '.', '+']) {
+		const invalid = assertFailure(parser.parse({ argv: [`--number=${raw}`] }));
+		assert.strictEqual(invalid.issues[0]?.code, 'INVALID_OPTION_VALUE');
+	}
+	assert.strictEqual(
+		assertFailure(parser.parse({ argv: ['--integer=3'] })).issues[0]?.code,
+		'INVALID_OPTION_VALUE'
+	);
+	const choice = assertFailure(parser.parse({ argv: ['--mode=alwyas'] }));
+	assert.deepStrictEqual(choice.issues[0]?.suggestions, ['always']);
+});
+
+test('applies defaults only after successful absence and never exposes fallback state on failure', () => {
+	const defaults = ['base'];
+	const parser = createParser({
+		name: { type: 'string', flags: ['--name'], required: true },
+		count: { type: 'integer', flags: ['--count'], default: 2 },
+		items: { type: 'string', flags: ['--item'], multiple: true, default: defaults },
+		empty: { type: 'string', flags: ['--empty'], multiple: true },
+		verbosity: { type: 'count', flags: ['-v'] }
+	});
+	defaults[0] = 'changed';
+	const missing = assertFailure(parser.parse({ argv: [] }));
+	assert.strictEqual(missing.issues[0]?.code, 'MISSING_REQUIRED_OPTION');
+	assert.strictEqual(Object.hasOwn(missing, 'values'), false);
+
+	const success = assertSuccess(parser.parse({ argv: ['--name=value'] }));
+	assert.deepStrictEqual({ ...success.values }, {
+		name: 'value',
 		count: 2,
 		items: ['base'],
-		optionalItems: []
+		empty: [],
+		verbosity: 0
 	});
-	assert.notStrictEqual(absent.values.items, defaultItems);
-
-	const specified = parser.parse({
-		args: ['--count', '3', '--item', 'explicit']
-	});
-	assert.strictEqual(specified.success, true);
-	assert.deepStrictEqual(specified.values, {
-		count: 3,
-		items: ['explicit'],
-		optionalItems: []
-	});
+	const invalid = assertFailure(
+		parser.parse({ argv: ['--name=value', '--count=many'] })
+	);
+	assert.strictEqual(invalid.specified.count, true);
+	assert.strictEqual(Object.hasOwn(invalid, 'values'), false);
 });
 
-test('invalid explicit values cannot expose defaults or partial values', () => {
+test('marks rejected recognized occurrences as specified without adding missing-required issues', () => {
 	const parser = createParser({
-		count: { type: 'number', flags: ['--count'], default: 2 },
-		mode: { type: 'string', flags: ['--mode'], default: 'safe' }
+		jobs: { type: 'integer', flags: ['--jobs'], required: true }
 	});
-	const result = parser.parse({ args: ['--count', 'many'] });
-
-	assert.strictEqual(result.success, false);
-	assert.strictEqual(Object.hasOwn(result, 'values'), false);
-	assert.strictEqual(result.specified.count, true);
-	assert.strictEqual(result.specified.mode, false);
-	assert.strictEqual(result.issues[0]?.code, 'INVALID_FLAG_VALUE');
+	const result = assertFailure(parser.parse({ argv: ['--jobs=many'] }));
+	assert.strictEqual(result.specified.jobs, true);
+	assert.deepStrictEqual(
+		result.issues.map((issue) => issue.code),
+		['INVALID_OPTION_VALUE']
+	);
 });
 
-test('validates empty strings according to the definition', () => {
-	const parser = createParser({
-		label: {
-			type: 'string',
-			flags: ['--label'],
-			allowEmpty: true
+test('validates custom results and preserves structured custom diagnostics', () => {
+	let receivedContext;
+	const custom = value.custom({
+		parse(raw, context) {
+			receivedContext = context;
+			return raw === 'accepted'
+				? { success: true, value: raw }
+				: {
+						success: false,
+						message: 'Custom value rejected.',
+						reason: 'FORMAT',
+						details: { expected: 'accepted' },
+						suggestions: ['accepted', 'accepted']
+					};
 		},
-		name: {
-			type: 'string',
-			flags: ['--name']
+		accepts(candidate) {
+			return typeof candidate === 'string';
 		}
 	});
-	const allowed = parser.parse({ args: ['--label='] });
-	assert.strictEqual(allowed.success, true);
-	assert.strictEqual(allowed.values.label, '');
-
-	const rejected = parser.parse({ args: ['--name='] });
-	assert.strictEqual(rejected.success, false);
-	assert.strictEqual(rejected.issues[0]?.code, 'EMPTY_FLAG_VALUE');
-});
-
-test('successful results contain values and no diagnostics', () => {
-	const parser = createParser({
-		required: { type: 'string', flags: ['--required'], required: true }
+	const parser = createParser({ item: { type: custom, flags: ['--item'] } });
+	const failure = assertFailure(parser.parse({ argv: ['--item=no'] }));
+	const issue = failure.issues[0];
+	assert.strictEqual(issue.reason, 'FORMAT');
+	assert.deepStrictEqual({ ...issue.details }, { expected: 'accepted' });
+	assert.deepStrictEqual(issue.suggestions, ['accepted']);
+	assert.strictEqual(Object.isFrozen(issue.details), true);
+	assert.strictEqual(Object.isFrozen(issue.suggestions), true);
+	assert.deepStrictEqual(receivedContext, {
+		option: 'item',
+		flag: '--item',
+		argvElement: '--item=no',
+		argvIndex: 0,
+		valueArgvIndex: 0,
+		inline: true
 	});
-	const result = parser.parse({ args: ['--required', 'value'] });
+	assert.strictEqual(Object.isFrozen(receivedContext), true);
 
-	assert.strictEqual(result.success, true);
-	assert.strictEqual(Object.hasOwn(result, 'issues'), false);
-	assert.deepStrictEqual(result.argumentsAfterDoubleDash, []);
-});
-
-test('does not mutate explicit arguments and remains deterministic', () => {
-	const parser = createParser({
-		name: { type: 'string', flags: ['--name'] }
+	const asyncValue = value.custom({
+		async parse(raw) {
+			return { success: true, value: raw };
+		},
+		accepts(candidate) {
+			return typeof candidate === 'string';
+		}
 	});
-	const args = ['--name', 'value'];
-	const snapshot = [...args];
-	const first = parser.parse({ args });
-	const second = parser.parse({ args });
-
-	assert.deepStrictEqual(args, snapshot);
-	assert.deepStrictEqual(first, second);
-});
-
-test('rejects invalid parse settings', () => {
-	const parser = createParser({});
-	const sparseArguments = new Array(1);
+	const asyncParser = createParser({ item: { type: asyncValue, flags: ['--item'] } });
 	assert.throws(
-		() => parser.parse(new Date()),
-		/Parse settings must be a plain object/u
-	);
-	assert.throws(
-		() => parser.parse({ args: sparseArguments }),
-		/setting "args" must be a string array/u
-	);
-	assert.throws(
-		() => parser.parse({ argv: [] }),
-		/unsupported property "argv"/u
-	);
-	assert.throws(
-		() => parser.parse({ args: [1] }),
-		/setting "args" must be a string array/u
-	);
-	assert.throws(
-		() => parser.parse({ args: undefined }),
-		/setting "args" must be a string array/u
+		() => asyncParser.parse({ argv: ['--item=value'] }),
+		/must be synchronous/u
 	);
 });
 
-test('uses process arguments when explicit arguments are omitted', () => {
+test('rejects malformed parse settings and keeps runtime resolution cross-runtime', () => {
 	const parser = createParser({
 		name: { type: 'string', flags: ['--name'], required: true }
 	});
-	const originalArguments = process.argv;
+	const sparse = new Array(1);
+	assert.throws(() => parser.parse(null), /Parse settings/u);
+	assert.throws(() => parser.parse({ argv: sparse }), /dense string array/u);
+	assert.throws(() => parser.parse({ argv: [1] }), /dense string array/u);
+	assert.throws(() => parser.parse({ argv: [], typo: true }), /unsupported property/u);
+	assert.throws(
+		() => parser.parse({ unknownFlagPolicy: true }),
+		/unknownFlagPolicy/u
+	);
+	assert.throws(() => parser.parse({ flagPlacement: 'after' }), /flagPlacement/u);
+	assert.throws(
+		() => parser.parse({ unknownFlags: 'collect' }),
+		/unsupported property/u
+	);
+	assert.throws(
+		() => parser.parse({ optionPlacement: 'before-positionals' }),
+		/unsupported property/u
+	);
+	const accessor = {};
+	Object.defineProperty(accessor, 'argv', { get: () => [] });
+	assert.throws(() => parser.parse(accessor), /data property/u);
+
+	const originalArgv = process.argv;
 	process.argv = ['node', 'script', '--name', 'runtime'];
 	try {
-		const result = parser.parse();
-		assert.strictEqual(result.success, true);
-		assert.strictEqual(result.values.name, 'runtime');
+		assert.strictEqual(assertSuccess(parser.parse()).values.name, 'runtime');
 	} finally {
-		process.argv = originalArguments;
+		process.argv = originalArgv;
 	}
 });
 
-test('falls back to Deno arguments when process arguments are unavailable or malformed', () => {
+test('falls back to Deno argv and then an empty vector when process argv is unusable', () => {
 	const parser = createParser({
-		name: { type: 'string', flags: ['--name'], required: true }
+		name: { type: 'string', flags: ['--name'] }
 	});
 	const processDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'process');
 	const denoDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'Deno');
 	try {
 		Object.defineProperty(globalThis, 'process', {
 			configurable: true,
-			writable: true,
-			value: undefined
+			value: { argv: ['node', 1] }
 		});
 		Object.defineProperty(globalThis, 'Deno', {
 			configurable: true,
-			writable: true,
-			value: { args: ['--name', 'deno'] }
+			value: { args: ['--name=deno'] }
 		});
-		const result = parser.parse();
-		assert.strictEqual(result.success, true);
-		assert.strictEqual(result.values.name, 'deno');
+		assert.strictEqual(assertSuccess(parser.parse()).values.name, 'deno');
 
-		const sparseArguments = ['node', 'script'];
-		sparseArguments.length = 3;
-		Object.defineProperty(globalThis, 'process', {
+		Object.defineProperty(globalThis, 'Deno', {
 			configurable: true,
-			writable: true,
-			value: { argv: sparseArguments }
+			value: { args: [1] }
 		});
-		const malformedProcessResult = parser.parse();
-		assert.strictEqual(malformedProcessResult.success, true);
-		assert.strictEqual(malformedProcessResult.values.name, 'deno');
+		assert.strictEqual(assertSuccess(parser.parse()).values.name, undefined);
 	} finally {
 		if (processDescriptor === undefined) {
 			delete globalThis.process;
@@ -395,4 +476,27 @@ test('falls back to Deno arguments when process arguments are unavailable or mal
 			Object.defineProperty(globalThis, 'Deno', denoDescriptor);
 		}
 	}
+});
+
+test('returns fresh immutable package-owned results without mutating argv', () => {
+	const parser = createParser({
+		name: { type: 'string', flags: ['--name'] },
+		items: { type: 'string', flags: ['--item'], multiple: true }
+	});
+	const argv = ['--name=value', '--item=a'];
+	const snapshot = [...argv];
+	const first = assertSuccess(parser.parse({ argv }));
+	const second = assertSuccess(parser.parse({ argv }));
+	assert.deepStrictEqual(argv, snapshot);
+	assert.deepStrictEqual(first, second);
+	assert.notStrictEqual(first, second);
+	assert.notStrictEqual(first.values, second.values);
+	assert.notStrictEqual(first.values.items, second.values.items);
+	assert.strictEqual(Object.getPrototypeOf(first.values), null);
+	assert.strictEqual(Object.getPrototypeOf(first.specified), null);
+	assert.strictEqual(Object.isFrozen(first), true);
+	assert.strictEqual(Object.isFrozen(first.values), true);
+	assert.strictEqual(Object.isFrozen(first.values.items), true);
+	assert.strictEqual(Object.isFrozen(first.positionals), true);
+	assert.strictEqual(Object.isFrozen(first.unknownFlags), true);
 });
