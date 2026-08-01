@@ -121,6 +121,11 @@ boundaries. A failure may add `reason`, a shallow-copied `details` object, and
 up to three `suggestions`. Promise results and malformed protocol results are
 programming errors.
 
+The resulting `ValueParser` implements the versioned structural protocol
+`argv-flags/value-parser/v1`. Compatible physical installations and registry
+editions can exchange value parsers; identity is not tied to a module-local
+registry. `parse`, `accepts`, and `snapshot` are public protocol operations.
+
 ## Flag and argv grammar
 
 - Short configured flags match `-[A-Za-z0-9]`.
@@ -165,3 +170,16 @@ interface ParseSettings {
   later pre-`--` elements into positionals. The default is `"interspersed"`.
 
 Settings are closed plain or null-prototype objects with own data properties.
+
+## Scanning without decoding
+
+`parser.scan()` accepts `argv` and `flagPlacement`, classifies the same token
+grammar as `parse()`, and never invokes a value parser. Recognized occurrences
+retain their logical option, selected flag, complete argv element, original
+index, and value index when one was consumed. The result also retains indexed
+ordinary arguments, unknown flags, tokens after `--`, and `doubleDashIndex`.
+
+Scanning reports syntax and value-span issues such as a missing required value.
+It does not decode values, apply defaults, enforce required options, or evaluate
+repetition. This is the integration boundary for command routers and other
+tools that need exact token ownership before the final parse.

@@ -1,10 +1,18 @@
-/** @internal Opaque value-parser brand; not exported from the package root. */
-export declare const valueParserBrand: unique symbol;
-
-/** An opaque parser produced by the {@link value} namespace. */
+/** Stable structural protocol implemented by value parsers. */
 export interface ValueParser<out Output> {
-	/** @internal Carries the parser output type without runtime state. */
-	readonly [valueParserBrand]: Output;
+	/** Identifies the interoperable value-parser protocol. */
+	readonly protocol: 'argv-flags/value-parser/v1';
+	/** Decodes one raw value synchronously. */
+	readonly parse: (
+		raw: string,
+		context: ValueParseContext
+	) => ValueParseResult<Output>;
+	/** Checks decoded values, defaults, and implicit values. */
+	readonly accepts: (value: unknown) => boolean;
+	/** Copies a value when ownership passes through the parser. */
+	readonly snapshot: (value: unknown) => Output;
+	/** Finite raw values when the parser has a closed choice set. */
+	readonly choices?: readonly string[];
 }
 
 /** Context supplied to a custom value parser. */
@@ -23,32 +31,26 @@ export interface ValueParseContext {
 	readonly inline: boolean;
 }
 
-/** A successful custom value parse. */
-export interface ValueParseSuccess<Output> {
-	/** Marks a successful custom parse. */
-	readonly success: true;
-	/** Decoded value. */
-	readonly value: Output;
-}
-
-/** A rejected custom value parse. */
-export interface ValueParseFailure {
-	/** Marks a rejected custom parse. */
-	readonly success: false;
-	/** Human-readable explanation. */
-	readonly message: string;
-	/** Optional machine-readable reason chosen by the custom parser. */
-	readonly reason?: string;
-	/** Optional structured context chosen by the custom parser. */
-	readonly details?: Readonly<Record<string, unknown>>;
-	/** Optional replacement candidates in preferred order. */
-	readonly suggestions?: readonly string[];
-}
-
 /** Result returned by a custom value parser. */
 export type ValueParseResult<Output> =
-	| ValueParseSuccess<Output>
-	| ValueParseFailure;
+	| {
+			/** Marks a successful custom parse. */
+			readonly success: true;
+			/** Decoded value. */
+			readonly value: Output;
+	  }
+	| {
+			/** Marks a rejected custom parse. */
+			readonly success: false;
+			/** Human-readable explanation. */
+			readonly message: string;
+			/** Optional machine-readable reason chosen by the custom parser. */
+			readonly reason?: string;
+			/** Optional structured context chosen by the custom parser. */
+			readonly details?: Readonly<Record<string, unknown>>;
+			/** Optional replacement candidates in preferred order. */
+			readonly suggestions?: readonly string[];
+	  };
 
 /** Protocol used by {@link value.custom}. */
 export interface CustomValueParserProtocol<Output> {
@@ -73,9 +75,65 @@ export interface ParseSettings {
 	readonly flagPlacement?: 'interspersed' | 'before-positionals';
 }
 
+/** Settings for argv classification without decoding option values. */
+export interface ScanSettings {
+	/** Explicit argv vector; runtime argv is used when omitted. */
+	readonly argv?: readonly string[];
+	/** Whether flags remain active after a positional argument. */
+	readonly flagPlacement?: 'interspersed' | 'before-positionals';
+}
+
 /** @internal Rejects parse-setting properties outside the public contract. */
 export type ExactParseSettings<Settings extends ParseSettings> = Settings &
 	Record<Exclude<keyof Settings, keyof ParseSettings>, never>;
+
+/** @internal Rejects scan-setting properties outside the public contract. */
+export type ExactScanSettings<Settings extends ScanSettings> = Settings &
+	Record<Exclude<keyof Settings, keyof ScanSettings>, never>;
+
+/** One non-option argv element with its original index. */
+export interface ScannedArgument {
+	/** Argument text. */
+	readonly value: string;
+	/** Original argv index. */
+	readonly argvIndex: number;
+}
+
+/** One recognized option occurrence without decoded value state. */
+export interface ScannedOption {
+	/** Logical option name. */
+	readonly option: string;
+	/** Configured flag spelling selected by this occurrence. */
+	readonly flag: string;
+	/** Complete argv element containing the flag. */
+	readonly argvElement: string;
+	/** Original index of the flag element. */
+	readonly argvIndex: number;
+	/** UTF-16 offset for a short-cluster member. */
+	readonly offset?: number;
+	/** Explicit raw value, when present. */
+	readonly rawValue?: string;
+	/** Original index of the explicit value. */
+	readonly valueArgvIndex?: number;
+	/** Whether the explicit value shares the flag's argv element. */
+	readonly inline?: boolean;
+}
+
+/** Immutable classification produced by a compiled parser's grammar. */
+export interface ArgvScan {
+	/** Recognized option occurrences in scan order. */
+	readonly options: readonly ScannedOption[];
+	/** Ordinary arguments before `--`. */
+	readonly arguments: readonly ScannedArgument[];
+	/** Arguments after `--`. */
+	readonly afterDoubleDash: readonly ScannedArgument[];
+	/** Original index of the `--` terminator, when present. */
+	readonly doubleDashIndex?: number;
+	/** Unknown flags with original locations. */
+	readonly unknownFlags: readonly UnknownFlag[];
+	/** Syntax and value-span issues; decoding, defaults, and requiredness are not evaluated. */
+	readonly issues: readonly ParseIssue[];
+}
 
 /** One unknown flag retained with its original argv location. */
 export interface UnknownFlag {
@@ -89,6 +147,8 @@ export interface UnknownFlag {
 	readonly offset?: number;
 	/** Text after the first `=` on an unknown long flag. */
 	readonly inlineValue?: string;
+	/** Nearby configured long flags, when available. */
+	readonly suggestions?: readonly string[];
 }
 
 /** @internal Fields shared by issues associated with a configured flag. */
@@ -442,6 +502,12 @@ export type ParseResult<Definitions extends OptionDefinitions> =
 
 /** A reusable parser compiled from one definition snapshot. */
 export interface Parser<Definitions extends OptionDefinitions> {
+	/** Classifies the current runtime's argv without decoding values. */
+	scan(): ArgvScan;
+	/** Classifies explicit argv with closed settings. */
+	scan<const Settings extends ScanSettings>(
+		settings: ExactScanSettings<Settings>
+	): ArgvScan;
 	/** Parses the current runtime's argv. */
 	parse(): ParseResult<Definitions>;
 	/** Parses with explicit closed settings. */

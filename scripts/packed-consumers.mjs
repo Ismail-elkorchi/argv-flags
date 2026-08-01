@@ -2,7 +2,6 @@ import { spawnSync } from 'node:child_process';
 import {
 	mkdtemp,
 	mkdir,
-	readdir,
 	rm,
 	writeFile
 } from 'node:fs/promises';
@@ -34,22 +33,33 @@ const run = (command, commandArguments, cwd) => {
 				.join('\n')
 		);
 	}
+	return result;
 };
 
 try {
-	run(
+	const packResult = run(
 		packageManager,
-		['pack', '--silent', '--pack-destination', temporaryRoot],
+		['pack', '--json', '--pack-destination', temporaryRoot],
 		repositoryRoot
 	);
-	const packageFiles = (await readdir(temporaryRoot)).filter((file) =>
-		file.endsWith('.tgz')
-	);
-	if (packageFiles.length !== 1 || packageFiles[0] === undefined) {
+	const archives = JSON.parse(packResult.stdout);
+	const archive = archives[0];
+	if (archives.length !== 1 || archive === undefined) {
 		throw new Error('Expected npm pack to produce exactly one tarball.');
 	}
+	const publishedPaths = new Set(archive.files.map((file) => file.path));
+	for (const expected of [
+		'docs/reference/options.md',
+		'dist/index.js.map',
+		'dist/index.d.ts.map',
+		'src/index.ts'
+	]) {
+		if (!publishedPaths.has(expected)) {
+			throw new Error(`Packed package is missing ${expected}.`);
+		}
+	}
 
-	const tarballPath = path.join(temporaryRoot, packageFiles[0]);
+	const tarballPath = path.join(temporaryRoot, archive.filename);
 	const consumerRoot = path.join(temporaryRoot, 'consumer');
 	await mkdir(consumerRoot);
 	await writeFile(

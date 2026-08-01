@@ -1,5 +1,16 @@
 # Changelog
 
+## 4.0.0 - 2026-08-01
+
+- Replaced module-instance value-parser identity with a stable structural
+  protocol that interoperates across duplicate installations and npm/JSR
+  package copies.
+- Added `parser.scan()` for immutable, indexed option-span and argument
+  classification without decoding values.
+- Retained unknown-long-flag suggestions in collected unknown records.
+- Included documentation and TypeScript sources in published archives so README
+  links and source/declaration maps resolve.
+
 ## 3.1.0 - 2026-08-01
 
 - Added `createParserFromMap()` and `OptionDefinitionMap` for libraries that

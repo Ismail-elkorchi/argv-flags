@@ -22,7 +22,9 @@
 import { compileDefinitions } from './definitions.ts';
 export { DefinitionError } from './definition-error.ts';
 import { parseCompiled } from './parser.ts';
+import { scanCompiled } from './scanner.ts';
 import type {
+	ArgvScan,
 	BooleanOptionDefinition,
 	CountOptionDefinition,
 	CustomValueParserProtocol,
@@ -42,6 +44,9 @@ import type {
 	Parser,
 	ParserResult,
 	RepeatPolicy,
+	ScannedArgument,
+	ScannedOption,
+	ScanSettings,
 	ScalarValueOptionDefinition,
 	UnknownFlag,
 	ValueOf,
@@ -53,6 +58,7 @@ import type {
 export { value } from './value.ts';
 
 export type {
+	ArgvScan,
 	BooleanOptionDefinition,
 	CountOptionDefinition,
 	CustomValueParserProtocol,
@@ -70,6 +76,9 @@ export type {
 	Parser,
 	ParserResult,
 	RepeatPolicy,
+	ScannedArgument,
+	ScannedOption,
+	ScanSettings,
 	ScalarValueOptionDefinition,
 	UnknownFlag,
 	ValueOf,
@@ -81,9 +90,11 @@ export type {
 
 function compileParser<Definitions extends OptionDefinitions>(definitions: Definitions): Parser<Definitions> {
 	const compiled = compileDefinitions(definitions);
+	const scan = ((settings?: ScanSettings) =>
+		scanCompiled(compiled, settings)) as Parser<Definitions>['scan'];
 	const parse = ((settings?: ParseSettings) =>
 		parseCompiled(compiled, settings) as ParseResult<Definitions>) as Parser<Definitions>['parse'];
-	return Object.freeze({ parse });
+	return Object.freeze({ scan, parse });
 }
 
 /** Validates inferred definitions once and returns a reusable immutable parser. */

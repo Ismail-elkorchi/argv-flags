@@ -44,6 +44,8 @@ An unknown long flag preserves its original argv element:
 
 An unknown short-cluster member additionally has `offset`, the zero-based
 UTF-16 position of the member in the complete argv element.
+Unknown long flags may also retain deterministic `suggestions`; collection mode
+does not discard them.
 
 ## Parse issues
 
@@ -82,7 +84,7 @@ Invalid definitions throw `DefinitionError` with a frozen `issues` array.
 | `CONFLICTING_OPTION_PROPERTIES` | Valid properties cannot be combined. |
 | `INVALID_FLAG` | A configured flag is malformed. |
 | `DUPLICATE_FLAG` | More than one entry claims a flag spelling. |
-| `INVALID_VALUE_PARSER` | `type` is an object not produced by `value`. |
+| `INVALID_VALUE_PARSER` | `type` does not implement the supported value-parser protocol. |
 | `INVALID_DEFAULT` | A default violates the selected value contract. |
 
 Compilation reports every independently discoverable definition issue.

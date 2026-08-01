@@ -2,8 +2,7 @@ import type {
 	CompiledBooleanOption,
 	CompiledDefinitions,
 	CompiledOption,
-	CompiledValueOption,
-	FlagBinding
+	CompiledValueOption
 } from './definitions.ts';
 import type {
 	ParseIssue,
@@ -12,6 +11,11 @@ import type {
 	ValueParseContext
 } from './public-types.ts';
 import { resolveRuntimeArgv } from './runtime.ts';
+import {
+	scanCompiledInternal,
+	type InternalArgvScan,
+	type InternalScannedOption
+} from './scanner.ts';
 import { addSuggestionToMessage, createSuggestions } from './suggestions.ts';
 import {
 	assertOwnDataProperties,
@@ -35,13 +39,8 @@ interface OptionAccumulator {
 
 interface ParseContext {
 	readonly compiled: CompiledDefinitions;
-	readonly argv: readonly string[];
-	readonly unknownFlagPolicy: 'error' | 'collect';
 	readonly specified: Record<string, boolean>;
 	readonly accumulators: Map<CompiledOption, OptionAccumulator>;
-	readonly positionals: string[];
-	readonly afterDoubleDash: string[];
-	readonly unknownFlags: UnknownFlag[];
 	readonly issues: ParseIssue[];
 }
 
@@ -64,9 +63,6 @@ interface RuntimeParseFailure {
 }
 
 export type RuntimeParseResult = RuntimeParseSuccess | RuntimeParseFailure;
-
-const SHORT_MEMBER_PATTERN = /^[A-Za-z0-9]$/u;
-const LONG_FLAG_PATTERN = /^--[A-Za-z0-9][A-Za-z0-9_-]*$/u;
 
 const normalizeParseSettings = (
 	settings: ParseSettings | undefined
@@ -94,10 +90,10 @@ const normalizeParseSettings = (
 			);
 		}
 	}
-	const argvValue = hasOwn(settings, 'argv')
+	const argv = hasOwn(settings, 'argv')
 		? settings['argv']
 		: resolveRuntimeArgv();
-	if (!isDenseStringArray(argvValue)) {
+	if (!isDenseStringArray(argv)) {
 		throw new TypeError('Parse setting "argv" must be a dense string array.');
 	}
 	const unknownFlagPolicy = hasOwn(settings, 'unknownFlagPolicy')
@@ -111,69 +107,31 @@ const normalizeParseSettings = (
 	const flagPlacement = hasOwn(settings, 'flagPlacement')
 		? settings['flagPlacement']
 		: 'interspersed';
-	if (
-		flagPlacement !== 'interspersed' &&
-		flagPlacement !== 'before-positionals'
-	) {
+	if (flagPlacement !== 'interspersed' && flagPlacement !== 'before-positionals') {
 		throw new TypeError(
 			'Parse setting "flagPlacement" must be "interspersed" or "before-positionals".'
 		);
 	}
 	return {
-		argv: Object.freeze([...argvValue]),
+		argv: Object.freeze([...argv]),
 		unknownFlagPolicy,
 		flagPlacement
 	};
 };
 
 const location = (
-	flag: string,
-	argvElement: string,
-	argvIndex: number,
-	offset?: number
+	occurrence: InternalScannedOption
 ): {
 	readonly flag: string;
 	readonly argvElement: string;
 	readonly argvIndex: number;
 	readonly offset?: number;
 } => ({
-	flag,
-	argvElement,
-	argvIndex,
-	...(offset === undefined ? {} : { offset })
+	flag: occurrence.flag,
+	argvElement: occurrence.argvElement,
+	argvIndex: occurrence.argvIndex,
+	...(occurrence.offset === undefined ? {} : { offset: occurrence.offset })
 });
-
-const recordUnknownFlag = (
-	context: ParseContext,
-	flag: string,
-	argvElement: string,
-	argvIndex: number,
-	offset: number | undefined,
-	inlineValue: string | undefined,
-	hasInlineValue: boolean
-): void => {
-	const source = location(flag, argvElement, argvIndex, offset);
-	context.unknownFlags.push({
-		...source,
-		...(hasInlineValue ? { inlineValue: inlineValue ?? '' } : {})
-	});
-	if (context.unknownFlagPolicy === 'collect') {
-		return;
-	}
-	const suggestions = flag.startsWith('--')
-		? createSuggestions(flag, context.compiled.longFlags, true)
-		: Object.freeze([]);
-	context.issues.push({
-		code: 'UNKNOWN_FLAG',
-		message: addSuggestionToMessage(`Unknown flag "${flag}".`, suggestions),
-		...source,
-		...(suggestions.length === 0 ? {} : { suggestions })
-	});
-};
-
-const markSpecified = (context: ParseContext, option: CompiledOption): void => {
-	context.specified[option.option] = true;
-};
 
 const accumulatorFor = (
 	context: ParseContext,
@@ -190,10 +148,7 @@ const applyScalarValue = (
 	context: ParseContext,
 	option: CompiledValueOption | CompiledBooleanOption,
 	value: unknown,
-	flag: string,
-	argvElement: string,
-	argvIndex: number,
-	offset?: number
+	occurrence: InternalScannedOption
 ): void => {
 	const accumulator = accumulatorFor(context, option);
 	if (accumulator.successfulOccurrences > 0) {
@@ -202,7 +157,7 @@ const applyScalarValue = (
 				code: 'REPEATED_OPTION',
 				message: `Option "${option.option}" was specified more than once.`,
 				option: option.option,
-				...location(flag, argvElement, argvIndex, offset)
+				...location(occurrence)
 			});
 		} else if (option.repeat === 'last') {
 			accumulator.selectedValue = value;
@@ -217,10 +172,7 @@ const applyDecodedValue = (
 	context: ParseContext,
 	option: CompiledValueOption,
 	value: unknown,
-	flag: string,
-	argvElement: string,
-	argvIndex: number,
-	offset?: number
+	occurrence: InternalScannedOption
 ): void => {
 	if (option.multiple) {
 		const accumulator = accumulatorFor(context, option);
@@ -228,344 +180,105 @@ const applyDecodedValue = (
 		accumulator.successfulOccurrences += 1;
 		return;
 	}
-	applyScalarValue(
-		context,
-		option,
-		value,
-		flag,
-		argvElement,
-		argvIndex,
-		offset
-	);
+	applyScalarValue(context, option, value, occurrence);
 };
 
 const applyExplicitValue = (
 	context: ParseContext,
 	option: CompiledValueOption,
-	flag: string,
-	argvElement: string,
-	argvIndex: number,
-	offset: number | undefined,
-	rawValue: string,
-	valueArgvIndex: number,
-	inline: boolean
+	occurrence: Extract<InternalScannedOption, { readonly state: 'explicit-value' }>
 ): void => {
 	const parseContext: ValueParseContext = Object.freeze({
 		option: option.option,
-		flag,
-		argvElement,
-		argvIndex,
-		valueArgvIndex,
-		inline
+		flag: occurrence.flag,
+		argvElement: occurrence.argvElement,
+		argvIndex: occurrence.argvIndex,
+		valueArgvIndex: occurrence.valueArgvIndex,
+		inline: occurrence.inline
 	});
-	const result = option.parser.parse(rawValue, parseContext);
+	const result = option.parser.parse(occurrence.rawValue, parseContext);
 	if (result.success) {
-		applyDecodedValue(
-			context,
-			option,
-			result.value,
-			flag,
-			argvElement,
-			argvIndex,
-			offset
-		);
+		applyDecodedValue(context, option, result.value, occurrence);
 		return;
 	}
 	const suggestions = result.suggestions ??
 		(option.parser.choices === undefined
 			? Object.freeze([])
-			: createSuggestions(rawValue, option.parser.choices, false));
+			: createSuggestions(occurrence.rawValue, option.parser.choices, false));
 	context.issues.push({
 		code: 'INVALID_OPTION_VALUE',
 		message: addSuggestionToMessage(result.message, suggestions),
 		option: option.option,
-		rawValue,
-		valueArgvIndex,
-		inline,
-		...location(flag, argvElement, argvIndex, offset),
+		rawValue: occurrence.rawValue,
+		valueArgvIndex: occurrence.valueArgvIndex,
+		inline: occurrence.inline,
+		...location(occurrence),
 		...(result.reason === undefined ? {} : { reason: result.reason }),
 		...(result.details === undefined ? {} : { details: result.details }),
 		...(suggestions.length === 0 ? {} : { suggestions })
 	});
 };
 
-const applyImplicitValue = (
+const applyOccurrence = (
 	context: ParseContext,
-	option: CompiledValueOption,
-	flag: string,
-	argvElement: string,
-	argvIndex: number,
-	offset?: number
+	occurrence: InternalScannedOption
 ): void => {
-	const value = option.parser.snapshot(option.implicitValue);
-	applyDecodedValue(
-		context,
-		option,
-		value,
-		flag,
-		argvElement,
-		argvIndex,
-		offset
-	);
-};
-
-const addMissingValueIssue = (
-	context: ParseContext,
-	option: CompiledValueOption,
-	flag: string,
-	argvElement: string,
-	argvIndex: number,
-	offset?: number
-): void => {
-	context.issues.push({
-		code: 'MISSING_OPTION_VALUE',
-		message: `Flag "${flag}" requires a value.`,
-		option: option.option,
-		...location(flag, argvElement, argvIndex, offset)
-	});
-};
-
-const applyBooleanOrCount = (
-	context: ParseContext,
-	binding: Exclude<FlagBinding, { readonly kind: 'value' }>,
-	flag: string,
-	argvElement: string,
-	argvIndex: number,
-	offset?: number
-): void => {
-	markSpecified(context, binding.option);
-	if (binding.kind === 'count') {
-		accumulatorFor(context, binding.option).count += 1;
+	const option = occurrence.binding.option;
+	context.specified[option.option] = true;
+	if (
+		occurrence.state === 'missing-value' ||
+		occurrence.state === 'unexpected-value'
+	) {
 		return;
 	}
-	applyScalarValue(
-		context,
-		binding.option,
-		binding.booleanValue,
-		flag,
-		argvElement,
-		argvIndex,
-		offset
-	);
+	if (occurrence.binding.kind === 'count') {
+		accumulatorFor(context, option).count += 1;
+		return;
+	}
+	if (occurrence.binding.kind === 'boolean') {
+		applyScalarValue(
+			context,
+			occurrence.binding.option,
+			occurrence.binding.booleanValue,
+			occurrence
+		);
+		return;
+	}
+	if (occurrence.state === 'implicit-value') {
+		applyDecodedValue(
+			context,
+			occurrence.binding.option,
+			occurrence.binding.option.parser.snapshot(
+				occurrence.binding.option.implicitValue
+			),
+			occurrence
+		);
+		return;
+	}
+	if (occurrence.state === 'explicit-value') {
+		applyExplicitValue(context, occurrence.binding.option, occurrence);
+	}
 };
 
-const addUnexpectedValueIssue = (
+const addUnknownIssues = (
 	context: ParseContext,
-	binding: FlagBinding,
-	flag: string,
-	argvElement: string,
-	argvIndex: number,
-	rawValue: string,
-	offset?: number
+	unknownFlags: readonly UnknownFlag[]
 ): void => {
-	markSpecified(context, binding.option);
-	context.issues.push({
-		code: 'UNEXPECTED_OPTION_VALUE',
-		message: `Flag "${flag}" does not accept a value.`,
-		option: binding.option.option,
-		rawValue,
-		...location(flag, argvElement, argvIndex, offset)
-	});
-};
-
-const parseLong = (
-	context: ParseContext,
-	argvIndex: number,
-	argvElement: string
-): boolean => {
-	const separatorIndex = argvElement.indexOf('=');
-	const hasInlineValue = separatorIndex !== -1;
-	const flag = hasInlineValue
-		? argvElement.slice(0, separatorIndex)
-		: argvElement;
-	const inlineValue = hasInlineValue
-		? argvElement.slice(separatorIndex + 1)
-		: undefined;
-	if (!LONG_FLAG_PATTERN.test(flag)) {
+	for (const unknown of unknownFlags) {
+		const suggestions = unknown.suggestions ?? Object.freeze([]);
 		context.issues.push({
-			code: 'INVALID_FLAG_SYNTAX',
-			message: `Invalid long flag syntax in "${argvElement}".`,
-			argvElement,
-			argvIndex
+			code: 'UNKNOWN_FLAG',
+			message: addSuggestionToMessage(
+				`Unknown flag "${unknown.flag}".`,
+				suggestions
+			),
+			flag: unknown.flag,
+			argvElement: unknown.argvElement,
+			argvIndex: unknown.argvIndex,
+			...(unknown.offset === undefined ? {} : { offset: unknown.offset }),
+			...(suggestions.length === 0 ? {} : { suggestions })
 		});
-		return false;
 	}
-	const binding = context.compiled.longBindings[flag];
-	if (binding === undefined) {
-		recordUnknownFlag(
-			context,
-			flag,
-			argvElement,
-			argvIndex,
-			undefined,
-			inlineValue,
-			hasInlineValue
-		);
-		return false;
-	}
-	if (binding.kind !== 'value') {
-		if (hasInlineValue) {
-			addUnexpectedValueIssue(
-				context,
-				binding,
-				flag,
-				argvElement,
-				argvIndex,
-				inlineValue ?? ''
-			);
-		} else {
-			applyBooleanOrCount(context, binding, flag, argvElement, argvIndex);
-		}
-		return false;
-	}
-	const option = binding.option;
-	markSpecified(context, option);
-	if (hasInlineValue) {
-		applyExplicitValue(
-			context,
-			option,
-			flag,
-			argvElement,
-			argvIndex,
-			undefined,
-			inlineValue ?? '',
-			argvIndex,
-			true
-		);
-		return false;
-	}
-	if (option.valueMode === 'optional-inline') {
-		applyImplicitValue(context, option, flag, argvElement, argvIndex);
-		return false;
-	}
-	const next = context.argv[argvIndex + 1];
-	if (next === undefined || next === '--') {
-		addMissingValueIssue(context, option, flag, argvElement, argvIndex);
-		return false;
-	}
-	applyExplicitValue(
-		context,
-		option,
-		flag,
-		argvElement,
-		argvIndex,
-		undefined,
-		next,
-		argvIndex + 1,
-		false
-	);
-	return true;
-};
-
-const parseShort = (
-	context: ParseContext,
-	argvIndex: number,
-	argvElement: string
-): boolean => {
-	for (let offset = 1; offset < argvElement.length; offset += 1) {
-		const member = argvElement[offset];
-		if (member === undefined || !SHORT_MEMBER_PATTERN.test(member)) {
-			context.issues.push({
-				code: 'INVALID_FLAG_SYNTAX',
-				message: `Invalid short flag syntax in "${argvElement}" at offset ${String(offset)}.`,
-				argvElement,
-				argvIndex,
-				offset
-			});
-			return false;
-		}
-		const flag = `-${member}`;
-		const binding = context.compiled.shortBindings[flag];
-		if (binding === undefined) {
-			recordUnknownFlag(
-				context,
-				flag,
-				argvElement,
-				argvIndex,
-				offset,
-				undefined,
-				false
-			);
-			continue;
-		}
-		const suffix = argvElement.slice(offset + 1);
-		if (binding.kind !== 'value') {
-			if (suffix.startsWith('=')) {
-				addUnexpectedValueIssue(
-					context,
-					binding,
-					flag,
-					argvElement,
-					argvIndex,
-					suffix.slice(1),
-					offset
-				);
-				return false;
-			}
-			applyBooleanOrCount(
-				context,
-				binding,
-				flag,
-				argvElement,
-				argvIndex,
-				offset
-			);
-			continue;
-		}
-		const option = binding.option;
-		markSpecified(context, option);
-		if (suffix.length > 0) {
-			const rawValue = suffix.startsWith('=') ? suffix.slice(1) : suffix;
-			applyExplicitValue(
-				context,
-				option,
-				flag,
-				argvElement,
-				argvIndex,
-				offset,
-				rawValue,
-				argvIndex,
-				true
-			);
-			return false;
-		}
-		if (option.valueMode === 'optional-inline') {
-			applyImplicitValue(
-				context,
-				option,
-				flag,
-				argvElement,
-				argvIndex,
-				offset
-			);
-			return false;
-		}
-		const next = context.argv[argvIndex + 1];
-		if (next === undefined || next === '--') {
-			addMissingValueIssue(
-				context,
-				option,
-				flag,
-				argvElement,
-				argvIndex,
-				offset
-			);
-			return false;
-		}
-		applyExplicitValue(
-			context,
-			option,
-			flag,
-			argvElement,
-			argvIndex,
-			offset,
-			next,
-			argvIndex + 1,
-			false
-		);
-		return true;
-	}
-	return false;
 };
 
 const addMissingRequiredIssues = (context: ParseContext): void => {
@@ -618,29 +331,18 @@ const materializeValues = (
 			continue;
 		}
 		if (option.hasDefault) {
-			values[option.option] =
-				option.kind === 'value'
-					? snapshotDefault(option)
-					: option.defaultValue;
+			values[option.option] = option.kind === 'value'
+				? snapshotDefault(option)
+				: option.defaultValue;
 		}
 	}
 	return Object.freeze(values);
 };
 
-const freezeUnknownFlags = (
-	unknownFlags: readonly UnknownFlag[]
-): readonly UnknownFlag[] =>
-	Object.freeze(unknownFlags.map((unknown) => Object.freeze({ ...unknown })));
-
-const freezeIssues = (issues: readonly ParseIssue[]): readonly ParseIssue[] =>
-	Object.freeze(issues.map((issue) => Object.freeze({ ...issue })));
-
-/** Parses one argv vector with already-compiled definitions. */
-export const parseCompiled = (
+const createContext = (
 	compiled: CompiledDefinitions,
-	settings?: ParseSettings
-): RuntimeParseResult => {
-	const normalized = normalizeParseSettings(settings);
+	scan: InternalArgvScan
+): ParseContext => {
 	const specified = Object.create(null) as Record<string, boolean>;
 	const accumulators = new Map<CompiledOption, OptionAccumulator>();
 	for (const option of compiled.options) {
@@ -652,60 +354,46 @@ export const parseCompiled = (
 			count: 0
 		});
 	}
-	const context: ParseContext = {
+	return {
 		compiled,
-		argv: normalized.argv,
-		unknownFlagPolicy: normalized.unknownFlagPolicy,
 		specified,
 		accumulators,
-		positionals: [],
-		afterDoubleDash: [],
-		unknownFlags: [],
-		issues: []
+		issues: [...scan.issues]
 	};
+};
 
-	let positionalOnly = false;
-	for (let argvIndex = 0; argvIndex < context.argv.length; argvIndex += 1) {
-		const argvElement = context.argv[argvIndex];
-		if (argvElement === undefined) {
-			throw new TypeError('Compiled argv unexpectedly contains a hole.');
-		}
-		if (argvElement === '--') {
-			context.afterDoubleDash.push(...context.argv.slice(argvIndex + 1));
-			break;
-		}
-		if (positionalOnly) {
-			context.positionals.push(argvElement);
-			continue;
-		}
-		let consumedNext = false;
-		if (argvElement.startsWith('--')) {
-			consumedNext = parseLong(context, argvIndex, argvElement);
-		} else if (argvElement.startsWith('-') && argvElement !== '-') {
-			consumedNext = parseShort(context, argvIndex, argvElement);
-		} else {
-			context.positionals.push(argvElement);
-			if (normalized.flagPlacement === 'before-positionals') {
-				positionalOnly = true;
-			}
-		}
-		if (consumedNext) {
-			argvIndex += 1;
-		}
+/** Parses one argv vector with already-compiled definitions. */
+export const parseCompiled = (
+	compiled: CompiledDefinitions,
+	settings?: ParseSettings
+): RuntimeParseResult => {
+	const normalized = normalizeParseSettings(settings);
+	const scan = scanCompiledInternal(
+		compiled,
+		normalized.argv,
+		normalized.flagPlacement
+	);
+	const context = createContext(compiled, scan);
+	for (const occurrence of scan.options) applyOccurrence(context, occurrence);
+	if (normalized.unknownFlagPolicy === 'error') {
+		addUnknownIssues(context, scan.unknownFlags);
 	}
-
 	addMissingRequiredIssues(context);
 	const common = {
-		specified: Object.freeze(specified),
-		positionals: Object.freeze([...context.positionals]),
-		afterDoubleDash: Object.freeze([...context.afterDoubleDash]),
-		unknownFlags: freezeUnknownFlags(context.unknownFlags)
+		specified: Object.freeze(context.specified),
+		positionals: Object.freeze(scan.arguments.map((argument) => argument.value)),
+		afterDoubleDash: Object.freeze(
+			scan.afterDoubleDash.map((argument) => argument.value)
+		),
+		unknownFlags: scan.unknownFlags
 	};
 	if (context.issues.length > 0) {
 		return Object.freeze({
 			success: false,
 			...common,
-			issues: freezeIssues(context.issues)
+			issues: Object.freeze(
+				context.issues.map((issue) => Object.freeze({ ...issue }))
+			)
 		});
 	}
 	return Object.freeze({
