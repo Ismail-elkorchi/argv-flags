@@ -92,7 +92,7 @@ interface RuntimeValueFailure {
 
 export type RuntimeValueResult = RuntimeValueSuccess | RuntimeValueFailure;
 
-/** Internal behavior associated with one opaque public value parser. */
+/** Validated runtime behavior read from the public value-parser protocol. */
 export interface RuntimeValueParser {
 	readonly parse: (
 		raw: string,
@@ -103,31 +103,20 @@ export interface RuntimeValueParser {
 	readonly choices?: readonly string[];
 }
 
-const parserRegistry = new WeakMap<object, RuntimeValueParser>();
-
 const createValueParser = <Output>(
 	runtime: RuntimeValueParser
 ): ValueParser<Output> => {
-	const parser = Object.freeze(Object.create(null)) as ValueParser<Output>;
-	parserRegistry.set(parser, Object.freeze(runtime));
-	return parser;
+	const parser = Object.assign(Object.create(null) as Record<string, unknown>, {
+		protocol: 'argv-flags/value-parser/v1' as const,
+		parse: runtime.parse,
+		accepts: runtime.accepts,
+		snapshot: runtime.snapshot,
+		...(runtime.choices === undefined
+			? {}
+			: { choices: Object.freeze([...runtime.choices]) })
+	});
+	return Object.freeze(parser) as ValueParser<Output>;
 };
-
-/** Returns internal behavior only for parsers created by this module. */
-export function getRuntimeValueParser(
-	candidate: ValueParser<unknown>
-): RuntimeValueParser;
-/** Returns internal behavior when an unknown value is a registered parser. */
-export function getRuntimeValueParser(
-	candidate: unknown
-): RuntimeValueParser | undefined;
-export function getRuntimeValueParser(
-	candidate: unknown
-): RuntimeValueParser | undefined {
-	return candidate !== null && typeof candidate === 'object'
-		? parserRegistry.get(candidate)
-		: undefined;
-}
 
 const readSettings = (
 	settings: unknown,
@@ -442,6 +431,131 @@ const assertResultProperties = (
 	}
 };
 
+const normalizeValueResult = (candidate: unknown): RuntimeValueResult => {
+	if (!isPlainRecord(candidate) || !hasOwn(candidate, 'success')) {
+		throw new TypeError('Value parser returned a malformed result.');
+	}
+	if (candidate['success'] === true) {
+		assertResultProperties(candidate, ['success', 'value']);
+		if (!hasOwn(candidate, 'value')) {
+			throw new TypeError('Value parser success must contain a value.');
+		}
+		return { success: true, value: candidate['value'] };
+	}
+	if (candidate['success'] !== false) {
+		throw new TypeError('Value parser result success must be boolean.');
+	}
+	assertResultProperties(candidate, [
+		'success',
+		'message',
+		'reason',
+		'details',
+		'suggestions'
+	]);
+	const message = candidate['message'];
+	const reason = hasOwn(candidate, 'reason') ? candidate['reason'] : undefined;
+	if (typeof message !== 'string' || message.length === 0) {
+		throw new TypeError('Value parser failure message must be a non-empty string.');
+	}
+	if (reason !== undefined && (typeof reason !== 'string' || reason.length === 0)) {
+		throw new TypeError('Value parser failure reason must be a non-empty string.');
+	}
+	const details = hasOwn(candidate, 'details')
+		? copyDetails(candidate['details'])
+		: undefined;
+	const suggestions = hasOwn(candidate, 'suggestions')
+		? copySuggestions(candidate['suggestions'])
+		: undefined;
+	return {
+		success: false,
+		message,
+		...(typeof reason === 'string' ? { reason } : {}),
+		...(details === undefined ? {} : { details }),
+		...(suggestions === undefined ? {} : { suggestions })
+	};
+};
+
+const ownDataValue = (
+	candidate: PlainRecord,
+	property: string
+): unknown => {
+	const descriptor = Object.getOwnPropertyDescriptor(candidate, property);
+	return descriptor !== undefined && 'value' in descriptor
+		? descriptor.value
+		: undefined;
+};
+
+/** Reads the stable value-parser protocol implemented by compatible package copies. */
+export function getRuntimeValueParser(
+	candidate: ValueParser<unknown>
+): RuntimeValueParser;
+/** Reads compatible runtime behavior from an unknown value. */
+export function getRuntimeValueParser(
+	candidate: unknown
+): RuntimeValueParser | undefined;
+export function getRuntimeValueParser(
+	candidate: unknown
+): RuntimeValueParser | undefined {
+	if (!isPlainRecord(candidate)) return undefined;
+	const protocol = ownDataValue(candidate, 'protocol');
+	const parseCandidate = ownDataValue(candidate, 'parse');
+	const acceptsCandidate = ownDataValue(candidate, 'accepts');
+	const snapshotCandidate = ownDataValue(candidate, 'snapshot');
+	const choicesCandidate = ownDataValue(candidate, 'choices');
+	if (
+		protocol !== 'argv-flags/value-parser/v1' ||
+		typeof parseCandidate !== 'function' ||
+		typeof acceptsCandidate !== 'function' ||
+		typeof snapshotCandidate !== 'function' ||
+		(choicesCandidate !== undefined && !isDenseStringArray(choicesCandidate))
+	) {
+		return undefined;
+	}
+	const parse = parseCandidate as (
+		raw: string,
+		context: ValueParseContext
+	) => unknown;
+	const check = acceptsCandidate as (value: unknown) => unknown;
+	const copy = snapshotCandidate as (value: unknown) => unknown;
+	const choices = choicesCandidate === undefined
+		? undefined
+		: Object.freeze([...choicesCandidate]);
+	const accepts = (value: unknown): boolean => {
+		const accepted: unknown = check(value);
+		if (typeof accepted !== 'boolean') {
+			throw new TypeError('Value parser accepts callback must return a boolean.');
+		}
+		return accepted;
+	};
+	const snapshot = (value: unknown): unknown => {
+		const captured: unknown = copy(value);
+		if (isPromiseLike(captured)) {
+			throw new TypeError('Value parser snapshot must be synchronous.');
+		}
+		if (!accepts(captured)) {
+			throw new TypeError('Value parser snapshot returned an unacceptable value.');
+		}
+		return captured;
+	};
+	return Object.freeze({
+		parse(raw: string, context: ValueParseContext): RuntimeValueResult {
+			const result: unknown = parse(raw, context);
+			if (isPromiseLike(result)) {
+				throw new TypeError('Value parser parse callback must be synchronous.');
+			}
+			const normalized = normalizeValueResult(result);
+			if (!normalized.success) return normalized;
+			if (!accepts(normalized.value)) {
+				throw new TypeError('Value parser returned an unacceptable value.');
+			}
+			return { success: true, value: snapshot(normalized.value) };
+		},
+		accepts,
+		snapshot,
+		...(choices === undefined ? {} : { choices })
+	});
+}
+
 const customFactory = <
 	Output,
 	const Protocol extends object = CustomValueParserProtocol<Output>
@@ -525,7 +639,7 @@ const customFactory = <
 				if (!hasOwn(callbackResult, 'value') || !accepts(callbackResult['value'])) {
 					throw new TypeError('Custom value parser returned an unacceptable value.');
 				}
-				return { success: true, value: snapshot(callbackResult['value']) };
+				return { success: true, value: callbackResult['value'] };
 			}
 			if (callbackResult['success'] !== false) {
 				throw new TypeError('Custom value parser result success must be boolean.');

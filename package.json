@@ -1,6 +1,6 @@
 {
   "name": "argv-flags",
-  "version": "3.1.0",
+  "version": "4.0.0",
   "description": "Typed cross-runtime command-line option parser with structured diagnostics.",
   "type": "module",
   "sideEffects": false,
@@ -15,9 +15,11 @@
   "files": [
     "CHANGELOG.md",
     "BREAKING_CHANGES.md",
+    "docs",
     "LICENSE",
     "README.md",
-    "dist"
+    "dist",
+    "src"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",

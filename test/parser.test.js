@@ -199,7 +199,12 @@ test('returns indexed unknown flags and deterministic suggestions', () => {
 	});
 	const typo = assertFailure(parser.parse({ argv: ['--verison'] }));
 	assert.deepStrictEqual(typo.unknownFlags, [
-		{ argvElement: '--verison', flag: '--verison', argvIndex: 0 }
+		{
+			argvElement: '--verison',
+			flag: '--verison',
+			argvIndex: 0,
+			suggestions: ['--version']
+		}
 	]);
 	assert.deepStrictEqual(typo.issues[0]?.suggestions, ['--version']);
 	assert.match(typo.issues[0]?.message, /Did you mean "--version"/u);
@@ -261,6 +266,59 @@ test('supports both positional modes and always honors double dash', () => {
 	assert.strictEqual(beforePositionals.values.verbose, undefined);
 	assert.deepStrictEqual(beforePositionals.positionals, ['first', '--verbose']);
 	assert.deepStrictEqual(beforePositionals.afterDoubleDash, ['--after']);
+});
+
+test('scan classifies option spans without decoding values', () => {
+	let decodeCount = 0;
+	const parser = createParser({
+		verbose: { type: 'boolean', flags: ['-v'] },
+		config: {
+			type: value.custom({
+				parse(raw) {
+					decodeCount += 1;
+					return { success: true, value: raw };
+				},
+				accepts(candidate) {
+					return typeof candidate === 'string';
+				}
+			}),
+			flags: ['-c', '--config']
+		}
+	});
+	const scan = parser.scan({
+		argv: ['-vc', 'file.json', 'deploy', '--unknown=x', '--', '--watch']
+	});
+
+	assert.strictEqual(decodeCount, 0);
+	assert.deepStrictEqual(scan.options, [
+		{
+			option: 'verbose',
+			flag: '-v',
+			argvElement: '-vc',
+			argvIndex: 0,
+			offset: 1
+		},
+		{
+			option: 'config',
+			flag: '-c',
+			argvElement: '-vc',
+			argvIndex: 0,
+			offset: 2,
+			rawValue: 'file.json',
+			valueArgvIndex: 1,
+			inline: false
+		}
+	]);
+	assert.deepStrictEqual(scan.arguments, [{ value: 'deploy', argvIndex: 2 }]);
+	assert.deepStrictEqual(scan.unknownFlags, [{
+		argvElement: '--unknown=x',
+		flag: '--unknown',
+		argvIndex: 3,
+		inlineValue: 'x'
+	}]);
+	assert.deepStrictEqual(scan.afterDoubleDash, [{ value: '--watch', argvIndex: 5 }]);
+	assert.strictEqual(scan.doubleDashIndex, 4);
+	assert.deepStrictEqual(scan.issues, []);
 });
 
 test('double dash interrupts a waiting required value', () => {

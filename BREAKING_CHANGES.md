@@ -2,6 +2,21 @@
 
 This document records migrations between incompatible public releases.
 
+## Version 4
+
+Version 4 makes value parsers interoperable and exposes the token scanner used
+by parsing.
+
+- `ValueParser` is now the public structural
+  `argv-flags/value-parser/v1` protocol. Code that fabricated or inspected the
+  previous opaque value must implement `parse`, `accepts`, and `snapshot`
+  instead. Parsers produced by `value` and `value.custom()` already conform.
+- Compatible duplicate installations and npm/JSR editions can exchange value
+  parsers; module identity is no longer part of the contract.
+- Compiled parsers expose `scan()` with indexed recognized occurrences,
+  arguments, unknown flags, post-`--` tokens, issues, and the terminator index.
+- Collected unknown long flags can now include `suggestions`.
+
 ## Version 3
 
 Version 3 expands value parsing and conventional short-flag grammar while

@@ -164,6 +164,11 @@ const composedDefinitions: OptionDefinitionMap = {
 	verbose: { type: 'boolean', flags: ['--verbose'] }
 };
 const composedParser = createParserFromMap(composedDefinitions);
+const composedScan = composedParser.scan({ argv: ['--input', 'file', 'tail'] });
+const scannedOption: string | undefined = composedScan.options[0]?.option;
+const scannedArgument: string | undefined = composedScan.arguments[0]?.value;
+void scannedOption;
+void scannedArgument;
 void composedParser;
 
 const scalarDefinition: ScalarValueOptionDefinition<'integer'> = {

@@ -1,5 +1,9 @@
 import assert from 'node:assert/strict';
+import { cp, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { test } from 'node:test';
+import { pathToFileURL } from 'node:url';
 import { createParser, value } from '../dist/index.js';
 
 test('validates value-factory settings and snapshots their inputs', () => {
@@ -63,7 +67,7 @@ test('uses exact one-edit choice suggestions without prefix or normalization gue
 	assert.strictEqual(emptyChoice.issues[0]?.suggestions, undefined);
 });
 
-test('captures custom protocol callbacks and keeps custom parser objects opaque', () => {
+test('captures custom callbacks and exposes the stable value-parser protocol', () => {
 	const protocol = {
 		parse(raw) {
 			return { success: true, value: raw };
@@ -79,7 +83,13 @@ test('captures custom protocol callbacks and keeps custom parser objects opaque'
 	assert.strictEqual(result.success, true);
 	assert.strictEqual(result.values.custom, 'original');
 	assert.strictEqual(Object.isFrozen(custom), true);
-	assert.deepStrictEqual(Reflect.ownKeys(custom), []);
+	assert.deepStrictEqual(Reflect.ownKeys(custom), [
+		'protocol',
+		'parse',
+		'accepts',
+		'snapshot'
+	]);
+	assert.strictEqual(custom.protocol, 'argv-flags/value-parser/v1');
 
 	assert.throws(
 		() => value.custom({ ...protocol, snapshot: undefined }),
@@ -89,6 +99,31 @@ test('captures custom protocol callbacks and keeps custom parser objects opaque'
 		() => value.custom({ ...protocol, extra: true }),
 		/unsupported property/u
 	);
+});
+
+test('value parsers interoperate across independent module instances', async () => {
+	const root = await mkdtemp(join(tmpdir(), 'argv-flags-instances-'));
+	try {
+		await writeFile(join(root, 'package.json'), '{"type":"module"}\n');
+		await cp(new URL('../dist/', import.meta.url), join(root, 'first'), { recursive: true });
+		await cp(new URL('../dist/', import.meta.url), join(root, 'second'), { recursive: true });
+		const first = await import(pathToFileURL(join(root, 'first', 'index.js')).href);
+		const second = await import(pathToFileURL(join(root, 'second', 'index.js')).href);
+		const externalChoice = first.value.choice(['eu', 'us']);
+		const parser = second.createParser({
+			region: {
+				type: externalChoice,
+				flags: ['--region'],
+				required: true
+			}
+		});
+
+		const result = parser.parse({ argv: ['--region=eu'] });
+		assert.strictEqual(result.success, true);
+		assert.strictEqual(result.values.region, 'eu');
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
 });
 
 test('snapshots each successfully decoded custom value once', () => {
