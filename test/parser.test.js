@@ -292,6 +292,7 @@ test('scan classifies option spans without decoding values', () => {
 	assert.strictEqual(decodeCount, 0);
 	assert.deepStrictEqual(scan.options, [
 		{
+			state: 'boolean',
 			option: 'verbose',
 			flag: '-v',
 			argvElement: '-vc',
@@ -299,6 +300,7 @@ test('scan classifies option spans without decoding values', () => {
 			offset: 1
 		},
 		{
+			state: 'explicit-value',
 			option: 'config',
 			flag: '-c',
 			argvElement: '-vc',
@@ -319,6 +321,42 @@ test('scan classifies option spans without decoding values', () => {
 	assert.deepStrictEqual(scan.afterDoubleDash, [{ value: '--watch', argvIndex: 5 }]);
 	assert.strictEqual(scan.doubleDashIndex, 4);
 	assert.deepStrictEqual(scan.issues, []);
+});
+
+test('scan exposes every recognized occurrence as a discriminated state', () => {
+	const parser = createParser({
+		enabled: { type: 'boolean', flags: ['--enabled'] },
+		quiet: { type: 'count', flags: ['-q'] },
+		color: {
+			type: 'string',
+			flags: ['--color'],
+			valueMode: 'optional-inline',
+			implicitValue: 'auto'
+		},
+		name: { type: 'string', flags: ['--name'] }
+	});
+	const scan = parser.scan({
+		argv: ['--enabled', '-q', '--color', '--enabled=yes', '--name']
+	});
+
+	assert.deepStrictEqual(
+		scan.options.map((option) => option.state),
+		['boolean', 'count', 'implicit-value', 'unexpected-value', 'missing-value']
+	);
+	assert.deepStrictEqual(scan.options[3], {
+		state: 'unexpected-value',
+		option: 'enabled',
+		flag: '--enabled',
+		argvElement: '--enabled=yes',
+		argvIndex: 3,
+		rawValue: 'yes',
+		valueArgvIndex: 3,
+		inline: true
+	});
+	assert.deepStrictEqual(
+		scan.issues.map((issue) => issue.code),
+		['UNEXPECTED_OPTION_VALUE', 'MISSING_OPTION_VALUE']
+	);
 });
 
 test('double dash interrupts a waiting required value', () => {

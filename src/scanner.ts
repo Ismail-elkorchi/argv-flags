@@ -4,9 +4,9 @@ import type {
 } from './definitions.ts';
 import type {
 	ArgvScan,
-	ParseIssue,
 	ScannedArgument,
 	ScannedOption,
+	ScanIssue,
 	ScanSettings,
 	UnknownFlag
 } from './public-types.ts';
@@ -19,32 +19,26 @@ import {
 	isPlainRecord
 } from './value-guards.ts';
 
-export type ScannedOptionState =
-	| 'switch'
-	| 'explicit-value'
-	| 'implicit-value'
-	| 'missing-value'
-	| 'unexpected-value';
-
-interface InternalScannedOptionBase extends ScannedOption {
-	readonly binding: FlagBinding;
-}
+type ValueFlagBinding = Extract<FlagBinding, { readonly kind: 'value' }>;
+type BooleanFlagBinding = Extract<FlagBinding, { readonly kind: 'boolean' }>;
+type CountFlagBinding = Extract<FlagBinding, { readonly kind: 'count' }>;
+type SwitchFlagBinding = BooleanFlagBinding | CountFlagBinding;
 
 export type InternalScannedOption =
-	| (InternalScannedOptionBase & {
-			readonly state: 'switch' | 'implicit-value' | 'missing-value';
+	| (Extract<ScannedOption, { readonly state: 'boolean' }> & {
+			readonly binding: BooleanFlagBinding;
 	  })
-	| (InternalScannedOptionBase & {
-			readonly state: 'explicit-value';
-			readonly rawValue: string;
-			readonly valueArgvIndex: number;
-			readonly inline: boolean;
+	| (Extract<ScannedOption, { readonly state: 'count' }> & {
+			readonly binding: CountFlagBinding;
 	  })
-	| (InternalScannedOptionBase & {
-			readonly state: 'unexpected-value';
-			readonly rawValue: string;
-			readonly valueArgvIndex: number;
-			readonly inline: boolean;
+	| (Extract<ScannedOption, { readonly state: 'explicit-value' }> & {
+			readonly binding: ValueFlagBinding;
+	  })
+	| (Extract<ScannedOption, { readonly state: 'implicit-value' | 'missing-value' }> & {
+			readonly binding: ValueFlagBinding;
+	  })
+	| (Extract<ScannedOption, { readonly state: 'unexpected-value' }> & {
+			readonly binding: SwitchFlagBinding;
 	  });
 
 export interface InternalArgvScan {
@@ -53,7 +47,7 @@ export interface InternalArgvScan {
 	readonly afterDoubleDash: readonly ScannedArgument[];
 	readonly doubleDashIndex?: number;
 	readonly unknownFlags: readonly UnknownFlag[];
-	readonly issues: readonly ParseIssue[];
+	readonly issues: readonly ScanIssue[];
 }
 
 interface ScanContext {
@@ -64,7 +58,7 @@ interface ScanContext {
 	readonly afterDoubleDash: ScannedArgument[];
 	doubleDashIndex?: number;
 	readonly unknownFlags: UnknownFlag[];
-	readonly issues: ParseIssue[];
+	readonly issues: ScanIssue[];
 }
 
 const SHORT_MEMBER_PATTERN = /^[A-Za-z0-9]$/u;
@@ -127,37 +121,78 @@ const source = (
 	...(offset === undefined ? {} : { offset })
 });
 
-const addOption = (
-	context: ScanContext,
-	binding: FlagBinding,
-	state: ScannedOptionState,
+const optionBase = <Binding extends FlagBinding>(
+	binding: Binding,
 	flag: string,
 	argvElement: string,
 	argvIndex: number,
-	offset?: number,
-	rawValue?: string,
-	valueArgvIndex?: number,
-	inline?: boolean
+	offset?: number
+): {
+	readonly binding: Binding;
+	readonly option: string;
+	readonly flag: string;
+	readonly argvElement: string;
+	readonly argvIndex: number;
+	readonly offset?: number;
+} => ({
+	binding,
+	option: binding.option.option,
+	...source(flag, argvElement, argvIndex, offset)
+});
+
+const addSwitch = (
+	context: ScanContext,
+	binding: SwitchFlagBinding,
+	flag: string,
+	argvElement: string,
+	argvIndex: number,
+	offset?: number
 ): void => {
-	const common = {
-		binding,
-		option: binding.option.option,
-		...source(flag, argvElement, argvIndex, offset)
-	};
-	if (state === 'explicit-value' || state === 'unexpected-value') {
-		if (rawValue === undefined || valueArgvIndex === undefined || inline === undefined) {
-			throw new TypeError('A scanned explicit value must retain its complete location.');
-		}
+	if (binding.kind === 'boolean') {
 		context.options.push({
-			...common,
-			state,
-			rawValue,
-			valueArgvIndex,
-			inline
+			...optionBase(binding, flag, argvElement, argvIndex, offset),
+			state: 'boolean'
 		});
 		return;
 	}
-	context.options.push({ ...common, state });
+	context.options.push({
+		...optionBase(binding, flag, argvElement, argvIndex, offset),
+		state: 'count'
+	});
+};
+
+const addExplicitValue = (
+	context: ScanContext,
+	binding: ValueFlagBinding,
+	flag: string,
+	argvElement: string,
+	argvIndex: number,
+	offset: number | undefined,
+	rawValue: string,
+	valueArgvIndex: number,
+	inline: boolean
+): void => {
+	context.options.push({
+		...optionBase(binding, flag, argvElement, argvIndex, offset),
+		state: 'explicit-value',
+		rawValue,
+		valueArgvIndex,
+		inline
+	});
+};
+
+const addImplicitValue = (
+	context: ScanContext,
+	binding: ValueFlagBinding,
+	flag: string,
+	argvElement: string,
+	argvIndex: number,
+	offset?: number
+): void => {
+	context.options.push({
+		...optionBase(binding, flag, argvElement, argvIndex, offset),
+		state: 'implicit-value'
+	});
 };
 
 const addUnknown = (
@@ -181,21 +216,16 @@ const addUnknown = (
 
 const addMissingValue = (
 	context: ScanContext,
-	binding: Extract<FlagBinding, { readonly kind: 'value' }>,
+	binding: ValueFlagBinding,
 	flag: string,
 	argvElement: string,
 	argvIndex: number,
 	offset?: number
 ): void => {
-	addOption(
-		context,
-		binding,
-		'missing-value',
-		flag,
-		argvElement,
-		argvIndex,
-		offset
-	);
+	context.options.push({
+		...optionBase(binding, flag, argvElement, argvIndex, offset),
+		state: 'missing-value'
+	});
 	context.issues.push({
 		code: 'MISSING_OPTION_VALUE',
 		message: `Flag "${flag}" requires a value.`,
@@ -206,25 +236,20 @@ const addMissingValue = (
 
 const addUnexpectedValue = (
 	context: ScanContext,
-	binding: Exclude<FlagBinding, { readonly kind: 'value' }>,
+	binding: SwitchFlagBinding,
 	flag: string,
 	argvElement: string,
 	argvIndex: number,
 	rawValue: string,
 	offset?: number
 ): void => {
-	addOption(
-		context,
-		binding,
-		'unexpected-value',
-		flag,
-		argvElement,
-		argvIndex,
-		offset,
+	context.options.push({
+		...optionBase(binding, flag, argvElement, argvIndex, offset),
+		state: 'unexpected-value',
 		rawValue,
-		argvIndex,
-		true
-	);
+		valueArgvIndex: argvIndex,
+		inline: true
+	});
 	context.issues.push({
 		code: 'UNEXPECTED_OPTION_VALUE',
 		message: `Flag "${flag}" does not accept a value.`,
@@ -280,15 +305,14 @@ const scanLong = (
 				inlineValue ?? ''
 			);
 		} else {
-			addOption(context, binding, 'switch', flag, argvElement, argvIndex);
+			addSwitch(context, binding, flag, argvElement, argvIndex);
 		}
 		return false;
 	}
 	if (hasInlineValue) {
-		addOption(
+		addExplicitValue(
 			context,
 			binding,
-			'explicit-value',
 			flag,
 			argvElement,
 			argvIndex,
@@ -300,7 +324,7 @@ const scanLong = (
 		return false;
 	}
 	if (binding.option.valueMode === 'optional-inline') {
-		addOption(context, binding, 'implicit-value', flag, argvElement, argvIndex);
+		addImplicitValue(context, binding, flag, argvElement, argvIndex);
 		return false;
 	}
 	const next = context.argv[argvIndex + 1];
@@ -308,10 +332,9 @@ const scanLong = (
 		addMissingValue(context, binding, flag, argvElement, argvIndex);
 		return false;
 	}
-	addOption(
+	addExplicitValue(
 		context,
 		binding,
-		'explicit-value',
 		flag,
 		argvElement,
 		argvIndex,
@@ -360,15 +383,14 @@ const scanShort = (
 				);
 				return false;
 			}
-			addOption(context, binding, 'switch', flag, argvElement, argvIndex, offset);
+			addSwitch(context, binding, flag, argvElement, argvIndex, offset);
 			continue;
 		}
 		if (suffix.length > 0) {
 			const rawValue = suffix.startsWith('=') ? suffix.slice(1) : suffix;
-			addOption(
+			addExplicitValue(
 				context,
 				binding,
-				'explicit-value',
 				flag,
 				argvElement,
 				argvIndex,
@@ -380,10 +402,9 @@ const scanShort = (
 			return false;
 		}
 		if (binding.option.valueMode === 'optional-inline') {
-			addOption(
+			addImplicitValue(
 				context,
 				binding,
-				'implicit-value',
 				flag,
 				argvElement,
 				argvIndex,
@@ -403,10 +424,9 @@ const scanShort = (
 			);
 			return false;
 		}
-		addOption(
+		addExplicitValue(
 			context,
 			binding,
-			'explicit-value',
 			flag,
 			argvElement,
 			argvIndex,
@@ -489,7 +509,8 @@ export const scanCompiled = (
 	const normalized = normalizeScanSettings(settings);
 	const result = scan(compiled, normalized.argv, normalized.flagPlacement);
 	return Object.freeze({
-		options: Object.freeze(result.options.map(({ binding: _binding, state: _state, ...option }) => Object.freeze(option))),
+		options: Object.freeze(result.options.map(({ binding: _binding, ...option }) =>
+			Object.freeze(option))),
 		arguments: result.arguments,
 		afterDoubleDash: result.afterDoubleDash,
 		...(result.doubleDashIndex === undefined

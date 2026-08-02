@@ -97,8 +97,8 @@ export interface ScannedArgument {
 	readonly argvIndex: number;
 }
 
-/** One recognized option occurrence without decoded value state. */
-export interface ScannedOption {
+/** @internal Location shared by recognized option occurrences. */
+interface ScannedOptionBase {
 	/** Logical option name. */
 	readonly option: string;
 	/** Configured flag spelling selected by this occurrence. */
@@ -109,29 +109,31 @@ export interface ScannedOption {
 	readonly argvIndex: number;
 	/** UTF-16 offset for a short-cluster member. */
 	readonly offset?: number;
-	/** Explicit raw value, when present. */
-	readonly rawValue?: string;
-	/** Original index of the explicit value. */
-	readonly valueArgvIndex?: number;
-	/** Whether the explicit value shares the flag's argv element. */
-	readonly inline?: boolean;
 }
 
-/** Immutable classification produced by a compiled parser's grammar. */
-export interface ArgvScan {
-	/** Recognized option occurrences in scan order. */
-	readonly options: readonly ScannedOption[];
-	/** Ordinary arguments before `--`. */
-	readonly arguments: readonly ScannedArgument[];
-	/** Arguments after `--`. */
-	readonly afterDoubleDash: readonly ScannedArgument[];
-	/** Original index of the `--` terminator, when present. */
-	readonly doubleDashIndex?: number;
-	/** Unknown flags with original locations. */
-	readonly unknownFlags: readonly UnknownFlag[];
-	/** Syntax and value-span issues; decoding, defaults, and requiredness are not evaluated. */
-	readonly issues: readonly ParseIssue[];
-}
+/** One recognized option occurrence, discriminated by its grammar state. */
+export type ScannedOption =
+	| (ScannedOptionBase & { readonly state: 'boolean' })
+	| (ScannedOptionBase & { readonly state: 'count' })
+	| (ScannedOptionBase & { readonly state: 'implicit-value' })
+	| (ScannedOptionBase & { readonly state: 'missing-value' })
+	| (ScannedOptionBase & {
+			readonly state: 'explicit-value';
+			/** Explicit raw value. */
+			readonly rawValue: string;
+			/** Original index of the explicit value. */
+			readonly valueArgvIndex: number;
+			/** Whether the explicit value shares the flag's argv element. */
+			readonly inline: boolean;
+	  })
+	| (ScannedOptionBase & {
+			readonly state: 'unexpected-value';
+			/** Raw value attached to a boolean or count flag. */
+			readonly rawValue: string;
+			/** Same argv index as the flag element. */
+			readonly valueArgvIndex: number;
+			readonly inline: true;
+	  });
 
 /** One unknown flag retained with its original argv location. */
 export interface UnknownFlag {
@@ -157,13 +159,8 @@ interface FlagLocation {
 	readonly offset?: number;
 }
 
-/** A structured parse issue with fields determined by its code. */
-export type ParseIssue =
-	| (FlagLocation & {
-			readonly code: 'UNKNOWN_FLAG';
-			readonly message: string;
-			readonly suggestions?: readonly string[];
-	  })
+/** Issues emitted while classifying argv without decoding values. */
+export type ScanIssue =
 	| {
 			readonly code: 'INVALID_FLAG_SYNTAX';
 			readonly message: string;
@@ -177,6 +174,21 @@ export type ParseIssue =
 			readonly option: string;
 	  })
 	| (FlagLocation & {
+			readonly code: 'UNEXPECTED_OPTION_VALUE';
+			readonly message: string;
+			readonly option: string;
+			readonly rawValue: string;
+	  });
+
+/** A structured parse issue with fields determined by its code. */
+export type ParseIssue =
+	| ScanIssue
+	| (FlagLocation & {
+			readonly code: 'UNKNOWN_FLAG';
+			readonly message: string;
+			readonly suggestions?: readonly string[];
+	  })
+	| (FlagLocation & {
 			readonly code: 'INVALID_OPTION_VALUE';
 			readonly message: string;
 			readonly option: string;
@@ -188,12 +200,6 @@ export type ParseIssue =
 			readonly suggestions?: readonly string[];
 	  })
 	| (FlagLocation & {
-			readonly code: 'UNEXPECTED_OPTION_VALUE';
-			readonly message: string;
-			readonly option: string;
-			readonly rawValue: string;
-	  })
-	| (FlagLocation & {
 			readonly code: 'REPEATED_OPTION';
 			readonly message: string;
 			readonly option: string;
@@ -203,6 +209,22 @@ export type ParseIssue =
 			readonly message: string;
 			readonly option: string;
 	  };
+
+/** Immutable classification produced by a compiled parser's grammar. */
+export interface ArgvScan {
+	/** Recognized option occurrences in scan order. */
+	readonly options: readonly ScannedOption[];
+	/** Ordinary arguments before `--`. */
+	readonly arguments: readonly ScannedArgument[];
+	/** Arguments after `--`. */
+	readonly afterDoubleDash: readonly ScannedArgument[];
+	/** Original index of the `--` terminator, when present. */
+	readonly doubleDashIndex?: number;
+	/** Unknown flags with original locations. */
+	readonly unknownFlags: readonly UnknownFlag[];
+	/** Syntax and value-span issues only. */
+	readonly issues: readonly ScanIssue[];
+}
 
 /** A structured definition issue with fields determined by its code. */
 export type DefinitionIssue =

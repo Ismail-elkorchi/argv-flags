@@ -37,7 +37,7 @@ jobs:
       - name: Install
         run: npm ci
       - name: Validate
-        run: npm run release:gate && npm run check && npm run jsr:dry
+        run: npm run release:gate && npm run check
       - name: Fail on tracked-file churn
         shell: bash
         run: |

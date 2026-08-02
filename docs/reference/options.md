@@ -124,7 +124,9 @@ programming errors.
 The resulting object implements the public `ValueParser` interface. Compatible
 physical installations and registry editions can exchange value parsers by
 that shape; identity is not tied to a module-local registry. `parse`, `accepts`,
-and `snapshot` are its public operations.
+and `snapshot` are its public operations. Optional `choices` are unique raw
+argv strings for completion and suggestions. Parsing an advertised choice must
+produce a value accepted by `accepts()` and copied successfully by `snapshot()`.
 
 ## Flag and argv grammar
 
@@ -176,10 +178,12 @@ Settings are closed plain or null-prototype objects with own data properties.
 `parser.scan()` accepts `argv` and `flagPlacement`, classifies the same token
 grammar as `parse()`, and never invokes a value parser. Recognized occurrences
 retain their logical option, selected flag, complete argv element, original
-index, and value index when one was consumed. The result also retains indexed
+index, and a `state` discriminant. Explicit and unexpected values also retain
+their raw value, value index, and inline status. The result also retains indexed
 ordinary arguments, unknown flags, tokens after `--`, and `doubleDashIndex`.
 
-Scanning reports syntax and value-span issues such as a missing required value.
-It does not decode values, apply defaults, enforce required options, or evaluate
-repetition. This is the integration boundary for command routers and other
-tools that need exact token ownership before the final parse.
+Scanning reports the narrower `ScanIssue` union for flag syntax, missing values,
+and unexpected values. It does not decode values, apply defaults, enforce
+required options, or evaluate repetition. This is the integration boundary for
+command routers and other tools that need exact token ownership before the
+final parse.

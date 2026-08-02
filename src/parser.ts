@@ -225,38 +225,38 @@ const applyOccurrence = (
 ): void => {
 	const option = occurrence.binding.option;
 	context.specified[option.option] = true;
-	if (
-		occurrence.state === 'missing-value' ||
-		occurrence.state === 'unexpected-value'
-	) {
-		return;
-	}
-	if (occurrence.binding.kind === 'count') {
-		accumulatorFor(context, option).count += 1;
-		return;
-	}
-	if (occurrence.binding.kind === 'boolean') {
-		applyScalarValue(
-			context,
-			occurrence.binding.option,
-			occurrence.binding.booleanValue,
-			occurrence
-		);
-		return;
-	}
-	if (occurrence.state === 'implicit-value') {
-		applyDecodedValue(
-			context,
-			occurrence.binding.option,
-			occurrence.binding.option.parser.snapshot(
-				occurrence.binding.option.implicitValue
-			),
-			occurrence
-		);
-		return;
-	}
-	if (occurrence.state === 'explicit-value') {
-		applyExplicitValue(context, occurrence.binding.option, occurrence);
+	switch (occurrence.state) {
+		case 'missing-value':
+		case 'unexpected-value':
+			return;
+		case 'count':
+			accumulatorFor(context, occurrence.binding.option).count += 1;
+			return;
+		case 'boolean':
+			applyScalarValue(
+				context,
+				occurrence.binding.option,
+				occurrence.binding.booleanValue,
+				occurrence
+			);
+			return;
+		case 'implicit-value':
+			applyDecodedValue(
+				context,
+				occurrence.binding.option,
+				occurrence.binding.option.parser.snapshot(
+					occurrence.binding.option.implicitValue
+				),
+				occurrence
+			);
+			return;
+		case 'explicit-value':
+			applyExplicitValue(context, occurrence.binding.option, occurrence);
+			return;
+		default: {
+			const unreachable: never = occurrence;
+			return unreachable;
+		}
 	}
 };
 
