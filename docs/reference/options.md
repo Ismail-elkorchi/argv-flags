@@ -42,8 +42,9 @@ const parser = createParser({
 });
 ```
 
-Explicit occurrences replace a multiple default. An absent multiple option
-without a default produces `[]`.
+Explicit occurrences replace a multiple default. An absent, non-required
+multiple option without a default produces `[]`; an absent required multiple
+option produces `MISSING_REQUIRED_OPTION`.
 
 A scalar value normally consumes an inline value or the next argv element.
 Optional-inline mode instead uses a compiled implicit value when the flag is

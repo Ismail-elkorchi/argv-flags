@@ -1,10 +1,11 @@
 # argv-flags
 
-Strict, typed argv parsing for Node, Deno, and Bun.
+Turn argv into trustworthy typed options on Node, Deno, and Bun.
 
 `argv-flags` compiles a small option definition into a reusable parser. It
-handles flags, values, short clusters, positionals, and `--`; it does not own
-commands, help text, prompts, or process exit behavior.
+handles flags, decoded values, short clusters, positional arguments, and `--`
+with immutable results and structured diagnostics. Its focused parser API fits
+CLI applications, reusable libraries, and command routers.
 
 ## Install
 
