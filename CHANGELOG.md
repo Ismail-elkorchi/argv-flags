@@ -1,6 +1,6 @@
 # Changelog
 
-## 3.0.0 - 2026-08-01
+## 3.0.0 - 2026-08-02
 
 - Replaced module-instance value-parser identity with a structural interface
   that interoperates across duplicate installations and npm/JSR package
