@@ -69,12 +69,15 @@ the option grammar.
 Composition libraries can call `parser.scan()` to classify recognized option
 spans, ordinary arguments, unknown flags, and the exact `--` location without
 decoding values or applying defaults. `parse()` and `scan()` use the same
-grammar implementation.
+grammar implementation. Each occurrence has a `state` discriminant for
+boolean, count, explicit, implicit, missing, or unexpected values.
 
 `ValueParser` is a public structural interface. A value parser created by a
 compatible second installation, bundle, or npm/JSR copy can be used in a
 definition compiled by another copy. Implementations must remain synchronous
-and must validate and snapshot values according to that interface.
+and expose their operations as data properties, not accessors. They must
+validate and snapshot values according to that interface. Advertised raw
+`choices` must be unique and must parse successfully.
 
 ## Grammar
 

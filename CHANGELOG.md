@@ -7,6 +7,10 @@
   copies.
 - Added `parser.scan()` for immutable, indexed option-span and argument
   classification without decoding values.
+- Made scanned occurrences a state-discriminated union and narrowed scan-only
+  diagnostics to `ScanIssue`.
+- Required structural parser choices to be unique and behaviorally consistent
+  when parsed.
 - Retained unknown-long-flag suggestions in collected unknown records.
 - Included documentation and TypeScript sources in published archives so README
   links and source/declaration maps resolve.
@@ -30,6 +34,7 @@
 - Strengthened definition snapshots, custom-value ownership, immutable results,
   and independently discoverable definition diagnostics.
 - Removed the version 2 grammar, names, diagnostics, and compatibility surface.
+- Added the JSR publish dry run to the normal project check.
 
 ## 2.0.0 - 2026-07-30
 

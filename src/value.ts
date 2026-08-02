@@ -486,16 +486,17 @@ export function getRuntimeValueParser(
 	candidate: unknown
 ): RuntimeValueParser | undefined {
 	if (candidate === null || typeof candidate !== 'object') return undefined;
-	const parser = candidate as Readonly<Record<string, unknown>>;
-	const parseCandidate = parser['parse'];
-	const acceptsCandidate = parser['accepts'];
-	const snapshotCandidate = parser['snapshot'];
-	const choicesCandidate = parser['choices'];
+	const parseCandidate = readStructuralDataProperty(candidate, 'parse');
+	const acceptsCandidate = readStructuralDataProperty(candidate, 'accepts');
+	const snapshotCandidate = readStructuralDataProperty(candidate, 'snapshot');
+	const choicesCandidate = readStructuralDataProperty(candidate, 'choices');
 	if (
 		typeof parseCandidate !== 'function' ||
 		typeof acceptsCandidate !== 'function' ||
 		typeof snapshotCandidate !== 'function' ||
-		(choicesCandidate !== undefined && !isDenseStringArray(choicesCandidate))
+		(choicesCandidate !== undefined &&
+			(!isDenseStringArray(choicesCandidate) ||
+				new Set(choicesCandidate).size !== choicesCandidate.length))
 	) {
 		return undefined;
 	}
@@ -532,7 +533,12 @@ export function getRuntimeValueParser(
 				throw new TypeError('Value parser parse callback must be synchronous.');
 			}
 			const normalized = normalizeValueResult(result);
-			if (!normalized.success) return normalized;
+			if (!normalized.success) {
+				if (choices?.includes(raw) === true) {
+					throw new TypeError('Value parser rejected one of its advertised choices.');
+				}
+				return normalized;
+			}
 			if (!accepts(normalized.value)) {
 				throw new TypeError('Value parser returned an unacceptable value.');
 			}
@@ -543,6 +549,23 @@ export function getRuntimeValueParser(
 		...(choices === undefined ? {} : { choices })
 	});
 }
+
+const ACCESSOR_PROPERTY = Symbol('accessor-property');
+
+const readStructuralDataProperty = (
+	value: object,
+	property: PropertyKey
+): unknown => {
+	let current: object | null = value;
+	while (current !== null) {
+		const descriptor = Object.getOwnPropertyDescriptor(current, property);
+		if (descriptor !== undefined) {
+			return 'value' in descriptor ? descriptor.value : ACCESSOR_PROPERTY;
+		}
+		current = Object.getPrototypeOf(current) as object | null;
+	}
+	return undefined;
+};
 
 const customFactory = <
 	Output,

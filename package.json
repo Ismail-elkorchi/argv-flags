@@ -29,7 +29,7 @@
     "test:types": "tsc -p tsconfig.type-tests.json",
     "test": "npm run build && npm run lint && npm run test:types && node --test",
     "test:consumers": "node ./scripts/packed-consumers.mjs",
-    "check": "node ./scripts/workflow-policy-check.mjs && npm run test && npm run docs:lint:jsr && npm run docs:test:jsr && npm run test:consumers && npm run examples:run",
+    "check": "node ./scripts/workflow-policy-check.mjs && npm run test && npm run docs:lint:jsr && npm run docs:test:jsr && npm run jsr:dry && npm run test:consumers && npm run examples:run",
     "docs:lint:jsr": "deno doc --lint src/index.ts",
     "docs:test:jsr": "deno test --doc --no-check src/index.ts",
     "jsr:dry": "deno publish --dry-run --allow-dirty",

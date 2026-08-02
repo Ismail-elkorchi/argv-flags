@@ -10,6 +10,7 @@ import {
 	type OptionDefinitionMap,
 	type ParseIssue,
 	type ParserResult,
+	type ScanIssue,
 	type ScalarValueOptionDefinition,
 	type UnknownFlag,
 	type ValueParseContext,
@@ -139,6 +140,9 @@ const invalidValueIssue: ParseIssue = {
 	inline: true
 };
 void invalidValueIssue;
+// @ts-expect-error decoding failures are not scan issues
+const invalidScanIssue: ScanIssue = invalidValueIssue;
+void invalidScanIssue;
 
 const definitionIssue: DefinitionIssue = {
 	code: 'UNSUPPORTED_OPTION_PROPERTY',
@@ -184,8 +188,37 @@ const composedParser = createParserFromMap(composedDefinitions);
 const composedScan = composedParser.scan({ argv: ['--input', 'file', 'tail'] });
 const scannedOption: string | undefined = composedScan.options[0]?.option;
 const scannedArgument: string | undefined = composedScan.arguments[0]?.value;
+const scanIssues: readonly ScanIssue[] = composedScan.issues;
+for (const occurrence of composedScan.options) {
+	switch (occurrence.state) {
+		case 'explicit-value': {
+			const rawValue: string = occurrence.rawValue;
+			const inline: boolean = occurrence.inline;
+			void rawValue;
+			void inline;
+			break;
+		}
+		case 'unexpected-value': {
+			const inline: true = occurrence.inline;
+			void inline;
+			break;
+		}
+		case 'boolean':
+		case 'count':
+		case 'implicit-value':
+		case 'missing-value':
+			// @ts-expect-error valueless states do not expose a raw value
+			void occurrence.rawValue;
+			break;
+		default: {
+			const exhaustive: never = occurrence;
+			void exhaustive;
+		}
+	}
+}
 void scannedOption;
 void scannedArgument;
+void scanIssues;
 void composedParser;
 
 const scalarDefinition: ScalarValueOptionDefinition<'integer'> = {

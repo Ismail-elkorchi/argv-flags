@@ -66,7 +66,9 @@ also retain `offset`. Invalid values include `rawValue`, `valueArgvIndex`, and
 whether the value was inline. Choice, custom-value, and unknown-long failures
 may include frozen `suggestions` without changing the failure.
 
-Scan issues follow argv and cluster order. Missing-required issues follow in
+`ArgvScan.issues` uses the narrower `ScanIssue` union because scanning emits
+only invalid-syntax, missing-value, and unexpected-value issues. Scan issues
+follow argv and cluster order. Missing-required parse issues follow in
 definition order. Use codes and structured fields for program logic; messages
 are for display.
 

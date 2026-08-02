@@ -121,6 +121,101 @@ test('accepts value parsers by their public method shape', () => {
 	assert.strictEqual(result.values.name, 'CASEY');
 });
 
+test('rejects structural parser accessors without executing them', () => {
+	let reads = 0;
+	const parser = {
+		accepts(candidate) {
+			return typeof candidate === 'string';
+		},
+		snapshot(candidate) {
+			return candidate;
+		}
+	};
+	Object.defineProperty(parser, 'parse', {
+		get() {
+			reads += 1;
+			return () => ({ success: true, value: 'unreachable' });
+		}
+	});
+
+	assert.throws(
+		() => createParser({ item: { type: parser, flags: ['--item'] } }),
+		/does not implement the ValueParser interface/u
+	);
+	assert.strictEqual(reads, 0);
+});
+
+test('validates structural parser choices without treating raw text as decoded output', () => {
+	let parseCount = 0;
+	const numberChoice = {
+		choices: ['1', '2'],
+		parse(raw) {
+			parseCount += 1;
+			return { success: true, value: Number(raw) };
+		},
+		accepts(candidate) {
+			return typeof candidate === 'number' && Number.isSafeInteger(candidate);
+		},
+		snapshot(candidate) {
+			return candidate;
+		}
+	};
+	const numberParser = createParser({
+		level: { type: numberChoice, flags: ['--level'] }
+	});
+	assert.strictEqual(parseCount, 0);
+	const accepted = numberParser.parse({ argv: ['--level=1'] });
+	assert.strictEqual(parseCount, 1);
+	assert.strictEqual(accepted.success, true);
+	assert.strictEqual(accepted.values.level, 1);
+
+	assert.throws(
+		() => createParser({
+			mode: { type: { ...numberChoice, choices: ['1', '1'] }, flags: ['--mode'] }
+		}),
+		/does not implement the ValueParser interface/u
+	);
+
+	const rejectingChoice = createParser({
+		mode: {
+			type: {
+				choices: ['yes'],
+				parse() {
+					return { success: false, message: 'Rejected.' };
+				},
+				accepts(candidate) {
+					return typeof candidate === 'string';
+				},
+				snapshot(candidate) {
+					return candidate;
+				}
+			},
+			flags: ['--mode']
+		}
+	});
+	assert.throws(
+		() => rejectingChoice.parse({ argv: ['--mode=yes'] }),
+		/rejected one of its advertised choices/u
+	);
+
+	const invalidSnapshot = createParser({
+		level: {
+			type: {
+				...numberChoice,
+				choices: ['1'],
+				snapshot() {
+					return 'not-a-number';
+				}
+			},
+			flags: ['--level']
+		}
+	});
+	assert.throws(
+		() => invalidSnapshot.parse({ argv: ['--level=1'] }),
+		/snapshot returned an unacceptable value/u
+	);
+});
+
 test('value parsers interoperate across independent module instances', async () => {
 	const root = await mkdtemp(join(tmpdir(), 'argv-flags-instances-'));
 	try {
