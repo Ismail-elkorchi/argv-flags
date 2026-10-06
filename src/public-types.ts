@@ -89,6 +89,36 @@ export type ExactParseSettings<Settings extends ParseSettings> = Settings &
 export type ExactScanSettings<Settings extends ScanSettings> = Settings &
 	Record<Exclude<keyof Settings, keyof ScanSettings>, never>;
 
+/** Settings for decoding a completed argv classification. */
+export interface DecodeSettings {
+	/** Whether unknown flags fail or are only collected. */
+	readonly unknownFlagPolicy?: 'error' | 'collect';
+}
+
+/** @internal Rejects unsupported decode settings. */
+export type ExactDecodeSettings<Settings extends DecodeSettings> = Settings &
+	Record<Exclude<keyof Settings, keyof DecodeSettings>, never>;
+
+/** An owned argv traversal, advanced only by a compiled parser. */
+export interface ArgvCursor {
+	/** Immutable argv snapshot used by this traversal. */
+	readonly argv: readonly string[];
+	/** Index of the next unclassified argv element. */
+	readonly index: number;
+	/** Whether every argv element has been classified. */
+	readonly done: boolean;
+	/** Opaque ownership marker; cursors can only be created by createArgvCursor(). */
+	readonly ownership: unique symbol;
+}
+
+/** One stable classified span, including any separately consumed value. */
+export interface ArgvSpan extends ArgvScan {
+	/** First argv index covered by this span. */
+	readonly startIndex: number;
+	/** Exclusive end of this span. */
+	readonly endIndex: number;
+}
+
 /** One non-option argv element with its original index. */
 export interface ScannedArgument {
 	/** Argument text. */
@@ -228,6 +258,11 @@ export interface ArgvScan {
 
 /** A structured definition issue with fields determined by its code. */
 export type DefinitionIssue =
+	| {
+			readonly code: 'DUPLICATE_OPTION';
+			readonly message: string;
+			readonly option: string;
+	  }
 	| {
 			readonly code: 'INVALID_DEFINITIONS';
 			readonly message: string;
@@ -522,6 +557,15 @@ export type ParseResult<Definitions extends OptionDefinitions> =
 
 /** A reusable parser compiled from one definition snapshot. */
 export interface Parser<Definitions extends OptionDefinitions> {
+	/** Classifies the next span under this parser's option scope. */
+	scanNext(cursor: ArgvCursor): ArgvSpan;
+	/** Decodes a completed owned traversal without scanning argv again. */
+	decode(cursor: ArgvCursor): ParseResult<Definitions>;
+	/** Decodes with a closed unknown-flag policy. */
+	decode<const Settings extends DecodeSettings>(
+		cursor: ArgvCursor,
+		settings: ExactDecodeSettings<Settings>
+	): ParseResult<Definitions>;
 	/** Classifies the current runtime's argv without decoding values. */
 	scan(): ArgvScan;
 	/** Classifies explicit argv with closed settings. */

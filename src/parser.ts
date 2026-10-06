@@ -5,29 +5,29 @@ import type {
 	CompiledValueOption
 } from './definitions.ts';
 import type {
+	ArgvCursor,
+	DecodeSettings,
 	ParseIssue,
 	ParseSettings,
 	UnknownFlag,
 	ValueParseContext
 } from './public-types.ts';
-import { resolveRuntimeArgv } from './runtime.ts';
 import {
-	scanCompiledInternal,
+	completedScan,
+	createArgvCursor,
+	scanNextCompiled,
 	type InternalArgvScan,
 	type InternalScannedOption
 } from './scanner.ts';
 import { addSuggestionToMessage, createSuggestions } from './suggestions.ts';
 import {
-	assertOwnDataProperties,
-	hasOwn,
-	isDenseStringArray,
-	isPlainRecord
+	copyClosedRecord,
+	hasOwn
 } from './value-guards.ts';
 
 interface NormalizedParseSettings {
-	readonly argv: readonly string[];
+	readonly cursor: ArgvCursor;
 	readonly unknownFlagPolicy: 'error' | 'collect';
-	readonly flagPlacement: 'interspersed' | 'before-positionals';
 }
 
 interface OptionAccumulator {
@@ -64,59 +64,26 @@ interface RuntimeParseFailure {
 
 export type RuntimeParseResult = RuntimeParseSuccess | RuntimeParseFailure;
 
-const normalizeParseSettings = (
-	settings: ParseSettings | undefined
-): NormalizedParseSettings => {
-	if (settings === undefined) {
-		return {
-			argv: Object.freeze(resolveRuntimeArgv()),
-			unknownFlagPolicy: 'error',
-			flagPlacement: 'interspersed'
-		};
+const readUnknownFlagPolicy = (settings: Readonly<Record<PropertyKey, unknown>>): 'error' | 'collect' => {
+	const policy = hasOwn(settings, 'unknownFlagPolicy') ? settings['unknownFlagPolicy'] : 'error';
+	if (policy !== 'error' && policy !== 'collect') {
+		throw new TypeError('Parse setting "unknownFlagPolicy" must be "error" or "collect".');
 	}
-	if (!isPlainRecord(settings)) {
-		throw new TypeError('Parse settings must be an ordinary or null-prototype object.');
-	}
-	assertOwnDataProperties(settings, 'Parse settings');
-	for (const property of Reflect.ownKeys(settings)) {
-		if (
-			typeof property !== 'string' ||
-			(property !== 'argv' &&
-				property !== 'unknownFlagPolicy' &&
-				property !== 'flagPlacement')
-		) {
-			throw new TypeError(
-				`Parse settings have unsupported property "${String(property)}".`
-			);
-		}
-	}
-	const argv = hasOwn(settings, 'argv')
-		? settings['argv']
-		: resolveRuntimeArgv();
-	if (!isDenseStringArray(argv)) {
-		throw new TypeError('Parse setting "argv" must be a dense string array.');
-	}
-	const unknownFlagPolicy = hasOwn(settings, 'unknownFlagPolicy')
-		? settings['unknownFlagPolicy']
-		: 'error';
-	if (unknownFlagPolicy !== 'error' && unknownFlagPolicy !== 'collect') {
-		throw new TypeError(
-			'Parse setting "unknownFlagPolicy" must be "error" or "collect".'
-		);
-	}
-	const flagPlacement = hasOwn(settings, 'flagPlacement')
-		? settings['flagPlacement']
-		: 'interspersed';
-	if (flagPlacement !== 'interspersed' && flagPlacement !== 'before-positionals') {
-		throw new TypeError(
-			'Parse setting "flagPlacement" must be "interspersed" or "before-positionals".'
-		);
-	}
-	return {
-		argv: Object.freeze([...argv]),
-		unknownFlagPolicy,
-		flagPlacement
-	};
+	return policy;
+};
+
+const readSettings = (settings: unknown, allowed: readonly string[], label: string): Readonly<Record<PropertyKey, unknown>> => {
+	if (settings === undefined) return Object.freeze(Object.create(null) as Record<PropertyKey, unknown>);
+	return copyClosedRecord(settings, allowed, `${label} settings`);
+};
+
+const normalizeParseSettings = (settings: ParseSettings | undefined): NormalizedParseSettings => {
+	const owned = readSettings(settings, ['argv', 'unknownFlagPolicy', 'flagPlacement'], 'Parse');
+	const cursor = createArgvCursor({
+		...(hasOwn(owned, 'argv') ? { argv: owned['argv'] as readonly string[] } : {}),
+		...(hasOwn(owned, 'flagPlacement') ? { flagPlacement: owned['flagPlacement'] as 'interspersed' | 'before-positionals' } : {})
+	});
+	return { cursor, unknownFlagPolicy: readUnknownFlagPolicy(owned) };
 };
 
 const location = (
@@ -362,20 +329,26 @@ const createContext = (
 	};
 };
 
-/** Parses one argv vector with already-compiled definitions. */
-export const parseCompiled = (
+/** Decodes completed owned occurrences against their final composed scope. */
+export const decodeCompiled = (
 	compiled: CompiledDefinitions,
-	settings?: ParseSettings
+	cursor: ArgvCursor,
+	settings?: DecodeSettings
 ): RuntimeParseResult => {
-	const normalized = normalizeParseSettings(settings);
-	const scan = scanCompiledInternal(
-		compiled,
-		normalized.argv,
-		normalized.flagPlacement
-	);
+	const owned = readSettings(settings, ['unknownFlagPolicy'], 'Decode');
+	const unknownFlagPolicy = readUnknownFlagPolicy(owned);
+	const scan = completedScan(cursor);
+	for (const occurrence of scan.options) {
+		const binding = occurrence.flag.startsWith('--')
+			? compiled.longBindings[occurrence.flag]
+			: compiled.shortBindings[occurrence.flag];
+		if (binding?.option !== occurrence.binding.option) {
+			throw new TypeError(`Classification for flag "${occurrence.flag}" belongs to a different option declaration.`);
+		}
+	}
 	const context = createContext(compiled, scan);
 	for (const occurrence of scan.options) applyOccurrence(context, occurrence);
-	if (normalized.unknownFlagPolicy === 'error') {
+	if (unknownFlagPolicy === 'error') {
 		addUnknownIssues(context, scan.unknownFlags);
 	}
 	addMissingRequiredIssues(context);
@@ -401,4 +374,11 @@ export const parseCompiled = (
 		...common,
 		values: materializeValues(context)
 	});
+};
+
+/** Parses by driving the same owned classification and decoding operations. */
+export const parseCompiled = (compiled: CompiledDefinitions, settings?: ParseSettings): RuntimeParseResult => {
+	const normalized = normalizeParseSettings(settings);
+	while (!normalized.cursor.done) scanNextCompiled(compiled, normalized.cursor);
+	return decodeCompiled(compiled, normalized.cursor, { unknownFlagPolicy: normalized.unknownFlagPolicy });
 };

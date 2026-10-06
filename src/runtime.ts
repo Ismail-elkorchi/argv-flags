@@ -1,4 +1,4 @@
-import { isDenseStringArray } from './value-guards.ts';
+import { copyStringArray } from './value-guards.ts';
 
 const readStringArrayProperty = (
 	value: unknown,
@@ -8,7 +8,7 @@ const readStringArrayProperty = (
 		return undefined;
 	}
 	const propertyValue = (value as Record<string, unknown>)[property];
-	return isDenseStringArray(propertyValue) ? propertyValue : undefined;
+	return copyStringArray(propertyValue, 'Runtime argv');
 };
 
 /** Resolves argv without importing a runtime-specific module. */

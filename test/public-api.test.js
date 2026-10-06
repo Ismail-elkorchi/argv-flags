@@ -5,6 +5,8 @@ import * as publicApi from 'argv-flags';
 test('exports only the public facade at runtime', () => {
 	assert.deepStrictEqual(Object.keys(publicApi), [
 		'DefinitionError',
+		'composeParsers',
+		'createArgvCursor',
 		'createParser',
 		'createParserFromMap',
 		'value'
