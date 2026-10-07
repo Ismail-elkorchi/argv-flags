@@ -1,7 +1,6 @@
 import {
 	DefinitionError,
 	createParser,
-	createParserFromMap,
 	value,
 	type CustomValueParserCallbacks,
 	type DefinitionIssue,
@@ -184,7 +183,7 @@ const composedDefinitions: OptionDefinitionMap = {
 	input: { type: 'string', flags: ['--input'] },
 	verbose: { type: 'boolean', flags: ['--verbose'] }
 };
-const composedParser = createParserFromMap(composedDefinitions);
+const composedParser = createParser(composedDefinitions);
 const composedScan = composedParser.scan({ argv: ['--input', 'file', 'tail'] });
 const scannedOption: string | undefined = composedScan.options[0]?.option;
 const scannedArgument: string | undefined = composedScan.arguments[0]?.value;
@@ -398,3 +397,13 @@ value.custom({
 // @ts-expect-error diagnostic codes are closed
 const openIssueCode: ParseIssue = { code: 'OTHER', message: 'Other.' };
 void openIssueCode;
+
+// Dynamic integrations use the same constructor as literal definitions.
+function compileDynamicDefinitions(definitions: OptionDefinitionMap) {
+	return createParser(definitions);
+}
+const dynamicResult = compileDynamicDefinitions(composedDefinitions).parse({ argv: [] });
+if (dynamicResult.success) {
+	const dynamicValue: unknown = dynamicResult.values["input"];
+	void dynamicValue;
+}

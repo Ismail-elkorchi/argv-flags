@@ -67,8 +67,7 @@ export type FlagBinding =
 
 export interface CompiledDefinitions {
 	readonly options: readonly CompiledOption[];
-	readonly longBindings: Readonly<Record<string, FlagBinding>>;
-	readonly shortBindings: Readonly<Record<string, FlagBinding>>;
+	readonly bindings: Readonly<Record<string, FlagBinding>>;
 	readonly longFlags: readonly string[];
 }
 
@@ -514,51 +513,49 @@ const compileCountOption = (
 		: undefined;
 };
 
+const claimFlags = (
+	option: string,
+	property: 'flags' | 'falseFlags',
+	candidates: unknown,
+	owners: Map<string, RegisteredFlag>,
+	issues: DefinitionIssue[]
+): void => {
+	if (!Array.isArray(candidates)) return;
+	for (let flagIndex = 0; flagIndex < candidates.length; flagIndex += 1) {
+		const flag: unknown = hasOwn(candidates, flagIndex)
+			? candidates[flagIndex]
+			: undefined;
+		if (typeof flag !== 'string' || !isFlagName(flag)) continue;
+		const existing = owners.get(flag);
+		if (existing === undefined) {
+			owners.set(flag, { option, property });
+			continue;
+		}
+		issues.push({
+			code: 'DUPLICATE_FLAG',
+			message: `Flag "${flag}" for option "${option}" is already assigned to option "${existing.option}".`,
+			option,
+			property,
+			flag,
+			flagIndex,
+			conflictingOption: existing.option,
+			conflictingProperty: existing.property
+		});
+	}
+};
+
 const collectDuplicateFlags = (
 	input: PlainRecord,
 	issues: DefinitionIssue[]
 ): void => {
 	const owners = new Map<string, RegisteredFlag>();
-	for (const optionKey of Reflect.ownKeys(input)) {
-		if (typeof optionKey !== 'string' || optionKey.length === 0) {
-			continue;
-		}
-		const definition = input[optionKey];
-		if (!isPlainRecord(definition)) {
-			continue;
-		}
-		const properties: readonly ('flags' | 'falseFlags')[] =
-			definition['type'] === 'boolean'
-				? ['flags', 'falseFlags']
-				: ['flags'];
-		for (const property of properties) {
-			const candidates = definition[property];
-			if (!Array.isArray(candidates)) {
-				continue;
-			}
-			for (let flagIndex = 0; flagIndex < candidates.length; flagIndex += 1) {
-				const flag: unknown = hasOwn(candidates, flagIndex)
-					? candidates[flagIndex]
-					: undefined;
-				if (typeof flag !== 'string' || !isFlagName(flag)) {
-					continue;
-				}
-				const existing = owners.get(flag);
-				if (existing === undefined) {
-					owners.set(flag, { option: optionKey, property });
-					continue;
-				}
-				issues.push({
-					code: 'DUPLICATE_FLAG',
-					message: `Flag "${flag}" for option "${optionKey}" is already assigned to option "${existing.option}".`,
-					option: optionKey,
-					property,
-					flag,
-					flagIndex,
-					conflictingOption: existing.option,
-					conflictingProperty: existing.property
-				});
-			}
+	for (const option of Reflect.ownKeys(input)) {
+		if (typeof option !== 'string' || option.length === 0) continue;
+		const definition = input[option];
+		if (!isPlainRecord(definition)) continue;
+		claimFlags(option, 'flags', definition['flags'], owners, issues);
+		if (definition['type'] === 'boolean') {
+			claimFlags(option, 'falseFlags', definition['falseFlags'], owners, issues);
 		}
 	}
 };
@@ -566,23 +563,16 @@ const collectDuplicateFlags = (
 const registerFlag = (
 	flag: string,
 	binding: FlagBinding,
-	longBindings: Record<string, FlagBinding>,
-	shortBindings: Record<string, FlagBinding>,
+	bindings: Record<string, FlagBinding>,
 	longFlags: string[]
 ): void => {
-	const frozenBinding = Object.freeze(binding);
-	if (flag.startsWith('--')) {
-		longBindings[flag] = frozenBinding;
-		longFlags.push(flag);
-	} else {
-		shortBindings[flag] = frozenBinding;
-	}
+	bindings[flag] = Object.freeze(binding);
+	if (flag.startsWith('--')) longFlags.push(flag);
 };
 
 const registerOptionFlags = (
 	option: CompiledOption,
-	longBindings: Record<string, FlagBinding>,
-	shortBindings: Record<string, FlagBinding>,
+	bindings: Record<string, FlagBinding>,
 	longFlags: string[]
 ): void => {
 	for (const flag of option.flags) {
@@ -594,8 +584,7 @@ const registerOptionFlags = (
 		registerFlag(
 			flag,
 			binding,
-			longBindings,
-			shortBindings,
+			bindings,
 			longFlags
 		);
 	}
@@ -604,8 +593,7 @@ const registerOptionFlags = (
 			registerFlag(
 				flag,
 				{ kind: 'boolean', option, booleanValue: false },
-				longBindings,
-				shortBindings,
+				bindings,
 				longFlags
 			);
 		}
@@ -704,22 +692,19 @@ export const compileDefinitions = (candidate: unknown): CompiledDefinitions => {
 };
 
 const assembleDefinitions = (options: readonly CompiledOption[]): CompiledDefinitions => {
-	const longBindings = Object.create(null) as Record<string, FlagBinding>;
-	const shortBindings = Object.create(null) as Record<string, FlagBinding>;
+	const bindings = Object.create(null) as Record<string, FlagBinding>;
 	const longFlags: string[] = [];
 	for (const option of options) {
 		registerOptionFlags(
 			option,
-			longBindings,
-			shortBindings,
+			bindings,
 			longFlags
 		);
 	}
 
 	return Object.freeze({
 		options: Object.freeze([...options]),
-		longBindings: Object.freeze(longBindings),
-		shortBindings: Object.freeze(shortBindings),
+		bindings: Object.freeze(bindings),
 		longFlags: Object.freeze(longFlags)
 	});
 };
@@ -737,19 +722,9 @@ export const composeDefinitions = (parts: readonly CompiledDefinitions[]): Compi
 					message: `Option "${option.option}" has more than one declaration.` });
 			}
 			names.add(option.option);
-			const groups = option.kind === 'boolean'
-				? [['flags', option.flags], ['falseFlags', option.falseFlags]] as const
-				: [['flags', option.flags]] as const;
-			for (const [property, spellings] of groups) {
-				for (let flagIndex = 0; flagIndex < spellings.length; flagIndex += 1) {
-					const flag = spellings[flagIndex];
-					if (flag === undefined) continue;
-					const owner = flags.get(flag);
-					if (owner === undefined) flags.set(flag, { option: option.option, property });
-					else issues.push({ code: 'DUPLICATE_FLAG', option: option.option, property, flag, flagIndex,
-						conflictingOption: owner.option, conflictingProperty: owner.property,
-						message: `Flag "${flag}" for option "${option.option}" is already assigned to option "${owner.option}".` });
-				}
+			claimFlags(option.option, 'flags', option.flags, flags, issues);
+			if (option.kind === 'boolean') {
+				claimFlags(option.option, 'falseFlags', option.falseFlags, flags, issues);
 			}
 			options.push(option);
 		}

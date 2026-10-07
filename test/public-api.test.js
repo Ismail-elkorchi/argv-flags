@@ -8,7 +8,6 @@ test('exports only the public facade at runtime', () => {
 		'composeParsers',
 		'createArgvCursor',
 		'createParser',
-		'createParserFromMap',
 		'value'
 	]);
 	assert.strictEqual(Object.isFrozen(publicApi.value), true);

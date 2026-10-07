@@ -6,16 +6,15 @@
 object. It deliberately leaves commands, help rendering, process exits,
 configuration discovery, and prompts to the application.
 
-The public runtime facade exports `createParser`, `createParserFromMap`,
+The public runtime facade exports `createParser`,
 `composeParsers`, `createArgvCursor`, `DefinitionError`, and `value`. `createParser()`
 validates and snapshots literal definitions once, builds prototype-safe flag
 lookups, and returns a frozen reusable parser. Parsing has no live dependency
 on the caller's definition objects.
 
-`createParserFromMap()` serves integration libraries that assemble definition
-maps dynamically. It accepts the closed `OptionDefinitionMap` union while
-leaving the stronger per-property inference of literal definitions to
-`createParser()`.
+`createParser()` also accepts dynamically assembled `OptionDefinitionMap`
+inputs. Literal definitions retain their stronger per-property inference
+through the same constructor.
 
 ## Vocabulary
 

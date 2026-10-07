@@ -132,7 +132,3 @@ export const composeParsers = (parsers: readonly Parser<OptionDefinitionMap>[]):
 export const createParser = <const Definitions extends OptionDefinitions>(
 	definitions: Definitions & ExactOptionDefinitions<Definitions>
 ): Parser<Definitions> => parserFromCompiled<Definitions>(compileDefinitions(definitions));
-
-/** Validates a definition map assembled dynamically by an integration. */
-export const createParserFromMap = (definitions: OptionDefinitionMap): Parser<OptionDefinitionMap> =>
-	parserFromCompiled<OptionDefinitionMap>(compileDefinitions(definitions));

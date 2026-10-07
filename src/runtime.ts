@@ -12,15 +12,15 @@ const readStringArrayProperty = (
 };
 
 /** Resolves argv without importing a runtime-specific module. */
-export const resolveRuntimeArgv = (): string[] => {
+export const resolveRuntimeArgv = (): readonly string[] => {
 	const runtimeGlobals = globalThis as typeof globalThis & {
 		process?: unknown;
 		Deno?: unknown;
 	};
 	const processArgv = readStringArrayProperty(runtimeGlobals.process, 'argv');
 	if (processArgv !== undefined) {
-		return processArgv.slice(2);
+		return Object.freeze(processArgv.slice(2));
 	}
 	const denoArgv = readStringArrayProperty(runtimeGlobals.Deno, 'args');
-	return denoArgv === undefined ? [] : [...denoArgv];
+	return denoArgv ?? Object.freeze([]);
 };

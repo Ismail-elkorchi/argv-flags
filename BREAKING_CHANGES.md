@@ -2,6 +2,54 @@
 
 This document records migrations between incompatible public releases.
 
+## Version 4 (unreleased)
+
+### One parser factory
+
+`createParserFromMap()` is removed. `createParser()` already accepts a dynamic
+`OptionDefinitionMap`, while preserving inference for literal definitions.
+Replace the import and call; the map does not need to be rebuilt:
+
+```ts
+import { createParser, type OptionDefinitionMap } from "argv-flags";
+
+const definitions: OptionDefinitionMap = {
+  output: { type: "string", flags: ["--output"] },
+};
+const parser = createParser(definitions);
+```
+
+### Scope-aware parsing and ownership
+
+Use `createArgvCursor()` to adopt argv once, `parser.scanNext(cursor)` to
+classify the next span in the current scope, and `parser.decode(cursor)` after
+the cursor is complete. Decoding uses retained classifications rather than
+rescanning argv. `composeParsers([parent, child])` combines the original
+compiled declarations without invoking value callbacks again.
+
+Cursors and composition handles are owned by their package instance. Do not
+fabricate handles, exchange them across duplicate package installations, or
+recompile equivalent definitions to decode a cursor classified by the original
+parser. Compose the original parser handles, including each declaration that
+classified an occurrence. Duplicate option names or flags are rejected.
+The structural `ValueParser` interface remains compatible across package copies.
+Existing `parse()` and `scan()` calls remain available.
+
+### Caller-owned data
+
+Framework-owned array fields, including argv, flags, choices, multiple-value
+default containers, and parser lists, are adopted from own data elements.
+Accessors are rejected rather than executed, and inherited elements or custom
+iterators cannot supply missing or alternate values. Use dense arrays where
+required by the field. Settings, option definitions, `value.custom()` callback records, and
+parser results must likewise expose own data properties. Structural
+`ValueParser` methods may still be inherited from a prototype. Materialize
+getter-backed or iterator-backed inputs before calling the API.
+
+This does not impose a dense-array requirement on a scalar custom value that
+happens to be an array. Its custom parser still defines validation and
+ownership through `accepts` and `snapshot`.
+
 ## Version 3
 
 Version 3 expands value parsing and conventional short-flag grammar, makes

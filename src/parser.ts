@@ -14,8 +14,8 @@ import type {
 } from './public-types.ts';
 import {
 	completedScan,
-	createArgvCursor,
-	scanNextCompiled,
+	createArgvCursorFromOwnedSettings,
+	advanceCompiled,
 	type InternalArgvScan,
 	type InternalScannedOption
 } from './scanner.ts';
@@ -79,10 +79,7 @@ const readSettings = (settings: unknown, allowed: readonly string[], label: stri
 
 const normalizeParseSettings = (settings: ParseSettings | undefined): NormalizedParseSettings => {
 	const owned = readSettings(settings, ['argv', 'unknownFlagPolicy', 'flagPlacement'], 'Parse');
-	const cursor = createArgvCursor({
-		...(hasOwn(owned, 'argv') ? { argv: owned['argv'] as readonly string[] } : {}),
-		...(hasOwn(owned, 'flagPlacement') ? { flagPlacement: owned['flagPlacement'] as 'interspersed' | 'before-positionals' } : {})
-	});
+	const cursor = createArgvCursorFromOwnedSettings(owned);
 	return { cursor, unknownFlagPolicy: readUnknownFlagPolicy(owned) };
 };
 
@@ -285,7 +282,7 @@ const materializeValues = (
 		}
 		if (option.kind === 'value' && option.multiple) {
 			if (accumulator.successfulOccurrences > 0) {
-				values[option.option] = Object.freeze([...accumulator.multipleValues]);
+				values[option.option] = Object.freeze(accumulator.multipleValues);
 			} else if (option.hasDefault) {
 				values[option.option] = snapshotDefault(option);
 			} else {
@@ -337,11 +334,17 @@ export const decodeCompiled = (
 ): RuntimeParseResult => {
 	const owned = readSettings(settings, ['unknownFlagPolicy'], 'Decode');
 	const unknownFlagPolicy = readUnknownFlagPolicy(owned);
+	return decodeNormalized(compiled, cursor, unknownFlagPolicy);
+};
+
+const decodeNormalized = (
+	compiled: CompiledDefinitions,
+	cursor: ArgvCursor,
+	unknownFlagPolicy: 'error' | 'collect'
+): RuntimeParseResult => {
 	const scan = completedScan(cursor);
 	for (const occurrence of scan.options) {
-		const binding = occurrence.flag.startsWith('--')
-			? compiled.longBindings[occurrence.flag]
-			: compiled.shortBindings[occurrence.flag];
+		const binding = compiled.bindings[occurrence.flag];
 		if (binding?.option !== occurrence.binding.option) {
 			throw new TypeError(`Classification for flag "${occurrence.flag}" belongs to a different option declaration.`);
 		}
@@ -379,6 +382,6 @@ export const decodeCompiled = (
 /** Parses by driving the same owned classification and decoding operations. */
 export const parseCompiled = (compiled: CompiledDefinitions, settings?: ParseSettings): RuntimeParseResult => {
 	const normalized = normalizeParseSettings(settings);
-	while (!normalized.cursor.done) scanNextCompiled(compiled, normalized.cursor);
-	return decodeCompiled(compiled, normalized.cursor, { unknownFlagPolicy: normalized.unknownFlagPolicy });
+	while (!normalized.cursor.done) advanceCompiled(compiled, normalized.cursor);
+	return decodeNormalized(compiled, normalized.cursor, normalized.unknownFlagPolicy);
 };

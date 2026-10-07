@@ -77,20 +77,7 @@ export interface ValueNamespace {
 	) => ValueParser<Output>;
 }
 
-interface RuntimeValueSuccess {
-	readonly success: true;
-	readonly value: unknown;
-}
-
-interface RuntimeValueFailure {
-	readonly success: false;
-	readonly message: string;
-	readonly reason?: string;
-	readonly details?: Readonly<Record<string, unknown>>;
-	readonly suggestions?: readonly string[];
-}
-
-export type RuntimeValueResult = RuntimeValueSuccess | RuntimeValueFailure;
+export type RuntimeValueResult = ValueParseResult<unknown>;
 
 /** Validated runtime behavior read from a public value parser. */
 export interface RuntimeValueParser {
@@ -113,9 +100,7 @@ const createValueParser = <Output>(
 		parse: checked.parse,
 		accepts: checked.accepts,
 		snapshot: checked.snapshot,
-		...(runtime.choices === undefined
-			? {}
-			: { choices: Object.freeze([...runtime.choices]) })
+		...(checked.choices === undefined ? {} : { choices: checked.choices })
 	});
 	ownedParsers.set(parser, checked);
 	return Object.freeze(parser) as ValueParser<Output>;
@@ -371,14 +356,12 @@ const copyDetails = (
 		throw new TypeError('Custom value failure details must be a plain object.');
 	}
 	const owned = copyDataRecord(details, 'Custom value failure details');
-	const copy = Object.create(null) as Record<string, unknown>;
 	for (const property of Reflect.ownKeys(owned)) {
 		if (typeof property !== 'string') {
 			throw new TypeError('Custom value failure details must use string keys.');
 		}
-		copy[property] = owned[property];
 	}
-	return Object.freeze(copy);
+	return owned;
 };
 
 const copySuggestions = (suggestions: unknown): readonly string[] => {

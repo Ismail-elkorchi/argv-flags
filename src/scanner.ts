@@ -64,17 +64,12 @@ interface ScanContext {
 }
 
 
-const normalizeScanSettings = (
-	settings: ScanSettings | undefined
+const normalizeOwnedScanSettings = (
+	owned: Readonly<Record<PropertyKey, unknown>>
 ): { readonly argv: readonly string[]; readonly flagPlacement: 'interspersed' | 'before-positionals' } => {
-	if (settings === undefined) {
-		return {
-			argv: Object.freeze(resolveRuntimeArgv()),
-			flagPlacement: 'interspersed'
-		};
-	}
-	const owned = copyClosedRecord(settings, ['argv', 'flagPlacement'], 'Scan settings');
-	const argv = copyStringArray(hasOwn(owned, 'argv') ? owned['argv'] : resolveRuntimeArgv(), 'Scan argv');
+	const argv = hasOwn(owned, 'argv')
+		? copyStringArray(owned['argv'], 'Scan argv')
+		: resolveRuntimeArgv();
 	if (argv === undefined) {
 		throw new TypeError('Scan setting "argv" must be a dense string array.');
 	}
@@ -86,7 +81,7 @@ const normalizeScanSettings = (
 			'Scan setting "flagPlacement" must be "interspersed" or "before-positionals".'
 		);
 	}
-	return { argv: argv, flagPlacement };
+	return { argv, flagPlacement };
 };
 
 const source = (
@@ -244,6 +239,28 @@ const addUnexpectedValue = (
 	});
 };
 
+/** Handles value flags without a syntactically attached value. */
+const scanUnattachedValue = (
+	context: ScanContext,
+	binding: ValueFlagBinding,
+	flag: string,
+	argvElement: string,
+	argvIndex: number,
+	offset?: number
+): boolean => {
+	if (binding.option.valueMode === 'optional-inline') {
+		addImplicitValue(context, binding, flag, argvElement, argvIndex, offset);
+		return false;
+	}
+	const next = context.argv[argvIndex + 1];
+	if (next === undefined || next === '--') {
+		addMissingValue(context, binding, flag, argvElement, argvIndex, offset);
+		return false;
+	}
+	addExplicitValue(context, binding, flag, argvElement, argvIndex, offset, next, argvIndex + 1, false);
+	return true;
+};
+
 const scanLong = (
 	context: ScanContext,
 	argvIndex: number,
@@ -266,7 +283,7 @@ const scanLong = (
 		});
 		return false;
 	}
-	const binding = context.compiled.longBindings[flag];
+	const binding = context.compiled.bindings[flag];
 	if (binding === undefined) {
 		addUnknown(
 			context,
@@ -308,27 +325,7 @@ const scanLong = (
 		);
 		return false;
 	}
-	if (binding.option.valueMode === 'optional-inline') {
-		addImplicitValue(context, binding, flag, argvElement, argvIndex);
-		return false;
-	}
-	const next = context.argv[argvIndex + 1];
-	if (next === undefined || next === '--') {
-		addMissingValue(context, binding, flag, argvElement, argvIndex);
-		return false;
-	}
-	addExplicitValue(
-		context,
-		binding,
-		flag,
-		argvElement,
-		argvIndex,
-		undefined,
-		next,
-		argvIndex + 1,
-		false
-	);
-	return true;
+	return scanUnattachedValue(context, binding, flag, argvElement, argvIndex);
 };
 
 const scanShort = (
@@ -349,7 +346,7 @@ const scanShort = (
 			return false;
 		}
 		const flag = `-${member}`;
-		const binding = context.compiled.shortBindings[flag];
+		const binding = context.compiled.bindings[flag];
 		if (binding === undefined) {
 			addUnknown(context, flag, argvElement, argvIndex, offset, undefined, false);
 			continue;
@@ -386,46 +383,13 @@ const scanShort = (
 			);
 			return false;
 		}
-		if (binding.option.valueMode === 'optional-inline') {
-			addImplicitValue(
-				context,
-				binding,
-				flag,
-				argvElement,
-				argvIndex,
-				offset
-			);
-			return false;
-		}
-		const next = context.argv[argvIndex + 1];
-		if (next === undefined || next === '--') {
-			addMissingValue(
-				context,
-				binding,
-				flag,
-				argvElement,
-				argvIndex,
-				offset
-			);
-			return false;
-		}
-		addExplicitValue(
-			context,
-			binding,
-			flag,
-			argvElement,
-			argvIndex,
-			offset,
-			next,
-			argvIndex + 1,
-			false
-		);
-		return true;
+		return scanUnattachedValue(context, binding, flag, argvElement, argvIndex, offset);
 	}
 	return false;
 };
 
 interface CursorState {
+	completed?: InternalArgvScan;
 	readonly argv: readonly string[];
 	readonly flagPlacement: 'interspersed' | 'before-positionals';
 	index: number;
@@ -441,8 +405,16 @@ interface CursorState {
 const cursors = new WeakMap<ArgvCursor, CursorState>();
 
 /** Adopts argv once for a scope-aware traversal. */
-export const createArgvCursor = (settings?: ScanSettings): ArgvCursor => {
-	const normalized = normalizeScanSettings(settings);
+export const createArgvCursor = (settings?: ScanSettings): ArgvCursor =>
+	createArgvCursorFromOwnedSettings(settings === undefined
+		? {}
+		: copyClosedRecord(settings, ['argv', 'flagPlacement'], 'Scan settings'));
+
+/** Internal entry point after the calling API has adopted its settings record. */
+export const createArgvCursorFromOwnedSettings = (
+	owned: Readonly<Record<PropertyKey, unknown>>
+): ArgvCursor => {
+	const normalized = normalizeOwnedScanSettings(owned);
 	const state: CursorState = {
 		...normalized, index: 0, positionalOnly: false,
 		options: [], arguments: [], afterDoubleDash: [], unknownFlags: [], issues: []
@@ -463,15 +435,20 @@ const cursorState = (cursor: ArgvCursor): CursorState => {
 	return state;
 };
 
+const freezeEntries = <Entry extends object>(entries: Entry[]): readonly Entry[] => {
+	for (const entry of entries) Object.freeze(entry);
+	return Object.freeze(entries);
+};
+
 const freezeScan = (context: Pick<ScanContext,
 	'options' | 'arguments' | 'afterDoubleDash' | 'doubleDashIndex' | 'unknownFlags' | 'issues'
 >): InternalArgvScan => Object.freeze({
-	options: Object.freeze(context.options.map((option) => Object.freeze(option))),
-	arguments: Object.freeze(context.arguments.map((argument) => Object.freeze(argument))),
-	afterDoubleDash: Object.freeze(context.afterDoubleDash.map((argument) => Object.freeze(argument))),
+	options: freezeEntries(context.options),
+	arguments: freezeEntries(context.arguments),
+	afterDoubleDash: freezeEntries(context.afterDoubleDash),
 	...(context.doubleDashIndex === undefined ? {} : { doubleDashIndex: context.doubleDashIndex }),
-	unknownFlags: Object.freeze(context.unknownFlags.map((flag) => Object.freeze(flag))),
-	issues: Object.freeze(context.issues.map((issue) => Object.freeze(issue)))
+	unknownFlags: freezeEntries(context.unknownFlags),
+	issues: freezeEntries(context.issues)
 });
 
 const projectScan = (result: InternalArgvScan): ArgvScan => Object.freeze({
@@ -479,15 +456,15 @@ const projectScan = (result: InternalArgvScan): ArgvScan => Object.freeze({
 	options: Object.freeze(result.options.map(({ binding: _binding, ...option }) => Object.freeze(option)))
 });
 
-/** Advances exactly one argv span with the current option scope. */
-export const scanNextCompiled = (compiled: CompiledDefinitions, cursor: ArgvCursor): ArgvSpan => {
+/** Advances owned classification without materializing a public span. */
+export const advanceCompiled = (compiled: CompiledDefinitions, cursor: ArgvCursor): void => {
 	const state = cursorState(cursor);
 	if (state.index === state.argv.length) throw new TypeError('Argv cursor is already complete.');
 	const startIndex = state.index;
 	const argvElement = state.argv[startIndex];
 	if (argvElement === undefined) throw new TypeError('Owned argv unexpectedly contains a hole.');
 	const context: ScanContext = {
-		compiled, argv: state.argv, options: [], arguments: [], afterDoubleDash: [], unknownFlags: [], issues: []
+		...state, compiled
 	};
 	let consumedNext = false;
 	if (argvElement === '--') {
@@ -511,12 +488,26 @@ export const scanNextCompiled = (compiled: CompiledDefinitions, cursor: ArgvCurs
 		}
 		state.index += consumedNext ? 2 : 1;
 	}
-	const result = freezeScan(context);
-	for (const option of result.options) state.options.push(option);
-	for (const argument of result.arguments) state.arguments.push(argument);
-	for (const argument of result.afterDoubleDash) state.afterDoubleDash.push(argument);
-	for (const flag of result.unknownFlags) state.unknownFlags.push(flag);
-	for (const issue of result.issues) state.issues.push(issue);
+};
+
+/** Advances exactly one argv span with the current option scope. */
+export const scanNextCompiled = (compiled: CompiledDefinitions, cursor: ArgvCursor): ArgvSpan => {
+	const state = cursorState(cursor);
+	const startIndex = state.index;
+	const optionsStart = state.options.length;
+	const argumentsStart = state.arguments.length;
+	const afterDoubleDashStart = state.afterDoubleDash.length;
+	const unknownFlagsStart = state.unknownFlags.length;
+	const issuesStart = state.issues.length;
+	advanceCompiled(compiled, cursor);
+	const result = freezeScan({
+		options: state.options.slice(optionsStart),
+		arguments: state.arguments.slice(argumentsStart),
+		afterDoubleDash: state.afterDoubleDash.slice(afterDoubleDashStart),
+		unknownFlags: state.unknownFlags.slice(unknownFlagsStart),
+		issues: state.issues.slice(issuesStart),
+		...(state.doubleDashIndex === startIndex ? { doubleDashIndex: startIndex } : {})
+	});
 	return Object.freeze({ ...projectScan(result), startIndex, endIndex: state.index });
 };
 
@@ -524,12 +515,13 @@ export const scanNextCompiled = (compiled: CompiledDefinitions, cursor: ArgvCurs
 export const completedScan = (cursor: ArgvCursor): InternalArgvScan => {
 	const state = cursorState(cursor);
 	if (state.index !== state.argv.length) throw new TypeError('Argv cursor must be complete before decoding.');
-	return freezeScan(state);
+	state.completed ??= freezeScan(state);
+	return state.completed;
 };
 
 /** Classifies argv using the same cursor traversal as parsing and routing. */
 export const scanCompiled = (compiled: CompiledDefinitions, settings?: ScanSettings): ArgvScan => {
 	const cursor = createArgvCursor(settings);
-	while (!cursor.done) scanNextCompiled(compiled, cursor);
+	while (!cursor.done) advanceCompiled(compiled, cursor);
 	return projectScan(completedScan(cursor));
 };

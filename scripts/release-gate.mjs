@@ -9,10 +9,20 @@ const run = async () => {
 
   const version = tagName.slice(1);
   const packageJson = JSON.parse(await readFile('package.json', 'utf8'));
-  if (packageJson.version !== version) {
-    throw new Error(
-      `release-gate: tag/version mismatch (tag=${version}, package.json=${packageJson.version})`
-    );
+  const packageLock = JSON.parse(await readFile('package-lock.json', 'utf8'));
+  const jsrJson = JSON.parse(await readFile('jsr.json', 'utf8'));
+  const versions = [
+    ['package.json', packageJson.version],
+    ['package-lock.json', packageLock.version],
+    ['package-lock.json packages[""]', packageLock.packages?.['']?.version],
+    ['jsr.json', jsrJson.version]
+  ];
+  for (const [source, actual] of versions) {
+    if (actual !== version) {
+      throw new Error(
+        `release-gate: tag/version mismatch (tag=${version}, ${source}=${actual})`
+      );
+    }
   }
 
   const changelog = await readFile('CHANGELOG.md', 'utf8');
@@ -21,7 +31,7 @@ const run = async () => {
   }
 
   process.stdout.write(
-    `release-gate: PASS tag=${tagName} package=${packageJson.version} changelog=found\n`
+    `release-gate: PASS tag=${tagName} package=${packageJson.version} lock=${packageLock.version} lock-root=${packageLock.packages[''].version} jsr=${jsrJson.version} changelog=found\n`
   );
 };
 
