@@ -125,8 +125,12 @@ programming errors.
 The resulting object implements the public `ValueParser` interface. Compatible
 physical installations and registry editions can exchange value parsers by
 that shape; identity is not tied to a module-local registry. `parse`, `accepts`,
-and `snapshot` are its public operations. Optional `choices` are unique raw
-argv strings for completion and suggestions. Parsing an advertised choice must
+and `snapshot` are its public operations. `parse()` decodes and validates but
+does not snapshot its output. The option parser snapshots each successful
+explicit value once when adopting it into a parse result; defaults and implicit
+values are snapshotted at declaration adoption and again when used in a result.
+Calling a factory value parser directly follows the same decoding-only contract.
+Optional `choices` are unique raw argv strings for completion and suggestions. Parsing an advertised choice must
 produce a value accepted by `accepts()` and copied successfully by `snapshot()`.
 
 ## Flag and argv grammar

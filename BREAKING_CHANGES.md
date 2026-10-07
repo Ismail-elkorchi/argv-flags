@@ -2,7 +2,7 @@
 
 This document records migrations between incompatible public releases.
 
-## Version 4 (unreleased)
+## Version 4
 
 ### One parser factory
 

@@ -1,6 +1,6 @@
 # Changelog
 
-## 4.0.0 - Unreleased
+## 4.0.0 - 2026-10-07
 
 - Removed `createParserFromMap()`. Use `createParser()` for both inferred literal
   definitions and dynamically assembled `OptionDefinitionMap` values.

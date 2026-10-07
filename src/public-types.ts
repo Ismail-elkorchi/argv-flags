@@ -1,13 +1,13 @@
 /** Runtime value parser. Compatible package copies interoperate by this shape. */
 export interface ValueParser<out Output> {
-	/** Decodes one raw value synchronously. */
+	/** Decodes one raw value synchronously without taking an ownership snapshot. */
 	readonly parse: (
 		raw: string,
 		context: ValueParseContext
 	) => ValueParseResult<Output>;
 	/** Checks decoded values, defaults, and implicit values. */
 	readonly accepts: (value: unknown) => boolean;
-	/** Copies a value when ownership passes through the parser. */
+	/** Copies an accepted value at a declaration or parse-result ownership boundary. */
 	readonly snapshot: (value: unknown) => Output;
 	/** Finite raw values when the parser has a closed choice set. */
 	readonly choices?: readonly string[];

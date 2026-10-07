@@ -63,10 +63,8 @@ function matchesVersionHeading(line, version) {
 
   const headingBody = trimmed.replace(/^#{2,3}\s+/, '');
   const normalized = headingBody.startsWith('v') ? headingBody.slice(1) : headingBody;
-  return normalized === version
-    || normalized.startsWith(`${version} `)
-    || normalized.startsWith(`${version}(`)
-    || normalized.startsWith(`${version}-`);
+  const [headingVersion] = normalized.split(/[\s(]/u, 1);
+  return headingVersion === version;
 }
 
 run().catch((error) => {

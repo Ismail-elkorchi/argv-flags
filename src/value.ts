@@ -510,7 +510,7 @@ export function getRuntimeValueParser(
 			if (!accepts(normalized.value)) {
 				throw new TypeError('Value parser returned an unacceptable value.');
 			}
-			return { success: true, value: snapshot(normalized.value) };
+			return normalized;
 		},
 		accepts,
 		snapshot,

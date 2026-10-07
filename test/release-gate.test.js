@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 const gate = fileURLToPath(new URL('../scripts/release-gate.mjs', import.meta.url));
 
 async function runGate(t, { tag = 'v4.0.0', packageVersion = '4.0.0', lockVersion = '4.0.0',
-  rootVersion = '4.0.0', jsrVersion = '4.0.0', changelog = '## 4.0.0 - Unreleased\n' } = {}) {
+  rootVersion = '4.0.0', jsrVersion = '4.0.0', changelog = '## 4.0.0 - 2026-10-07\n' } = {}) {
   const cwd = await mkdtemp(join(tmpdir(), 'argv-release-gate-'));
   t.after(() => rm(cwd, { recursive: true, force: true }));
   await Promise.all([
@@ -69,4 +69,28 @@ test('release gate requires release notes for the selected version', async (t) =
   const result = await runGate(t, { changelog: '## 3.0.0\n' });
   assert.equal(result.status, 1);
   assert.match(result.stderr, /missing CHANGELOG section for version 4\.0\.0/u);
+});
+
+for (const heading of ['## 4.0.0-rc.1 - 2026-10-01', '## 4.0.0+build.1', '### v4.0.0-preview']) {
+  test(`release gate rejects a different complete version: ${heading}`, async (t) => {
+    const result = await runGate(t, { changelog: `${heading}\n` });
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /missing CHANGELOG section/u);
+  });
+}
+
+for (const heading of ['## 4.0.0', '### v4.0.0 (2026-10-07)', '## 4.0.0 - 2026-10-07']) {
+  test(`release gate matches an exact version token: ${heading}`, async (t) => {
+    const result = await runGate(t, { changelog: `${heading}\n` });
+    assert.equal(result.status, 0, result.stderr);
+  });
+}
+
+test('release gate accepts an exact prerelease version when all manifests match', async (t) => {
+  const version = '4.0.0-rc.1';
+  const result = await runGate(t, {
+    tag: `v${version}`, packageVersion: version, lockVersion: version,
+    rootVersion: version, jsrVersion: version, changelog: `## ${version} - 2026-10-07\n`
+  });
+  assert.equal(result.status, 0, result.stderr);
 });

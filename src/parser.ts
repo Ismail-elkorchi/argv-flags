@@ -162,7 +162,7 @@ const applyExplicitValue = (
 	});
 	const result = option.parser.parse(occurrence.rawValue, parseContext);
 	if (result.success) {
-		applyDecodedValue(context, option, result.value, occurrence);
+		applyDecodedValue(context, option, option.parser.snapshot(result.value), occurrence);
 		return;
 	}
 	const suggestions = result.suggestions ??
