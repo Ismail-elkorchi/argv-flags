@@ -78,7 +78,7 @@ try {
 	);
 	await writeFile(
 		path.join(consumerRoot, 'consumer.mjs'),
-		`import { DefinitionError, createParser, value } from 'argv-flags';
+		`import { DefinitionError, composeParsers, createArgvCursor, createParser, value } from 'argv-flags';
 
 const parser = createParser({
   all: { type: 'boolean', flags: ['-a'] },
@@ -111,6 +111,18 @@ try {
   if (!(error instanceof DefinitionError) || error.issues[0]?.code !== 'UNSUPPORTED_OPTION_PROPERTY') {
     throw error;
   }
+}
+
+const parent = createParser({ config: { type: 'string', flags: ['--config'] } });
+const child = createParser({ output: { type: 'string', flags: ['--output'] } });
+const composed = composeParsers([parent, child]);
+const cursor = createArgvCursor({ argv: ['--config', 'build', 'build', '--output=x'] });
+parent.scanNext(cursor);
+parent.scanNext(cursor);
+while (!cursor.done) composed.scanNext(cursor);
+const retained = composed.decode(cursor);
+if (!retained.success || retained.values.config !== 'build' || retained.values.output !== 'x') {
+  throw new Error('Installed package did not preserve scope-aware classification.');
 }
 
 const runtimeResult = createParser({

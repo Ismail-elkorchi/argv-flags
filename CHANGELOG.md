@@ -1,5 +1,25 @@
 # Changelog
 
+## 4.0.0 - 2026-10-07
+
+- Removed `createParserFromMap()`. Use `createParser()` for both inferred literal
+  definitions and dynamically assembled `OptionDefinitionMap` values.
+- Added `createArgvCursor()`, `parser.scanNext()`, `parser.decode()`, and
+  `composeParsers()` for scope-aware classification and decoding without
+  rescanning argv or recompiling owned declarations.
+- Made cursor and parser-composition ownership explicit: use original parser
+  handles from the same package instance; structural `ValueParser` objects
+  remain interoperable across compatible package copies.
+- Tightened adoption of caller-owned arrays and records. Supply dense data
+  arrays for framework-owned fields and own data properties rather than
+  accessors, inherited elements, or custom iteration behavior. Scalar custom
+  values retain their parser-defined validation and ownership semantics.
+- Removed discarded per-span projections from whole-argv parsing and scanning,
+  shared flag lookup and validation rules, and reused immutable owned data.
+- Required the release tag, npm package, both lockfile root versions, and JSR
+  package to agree before the release gate can pass.
+- See `BREAKING_CHANGES.md` for migration guidance.
+
 ## 3.0.0 - 2026-08-02
 
 - Replaced module-instance value-parser identity with a structural interface

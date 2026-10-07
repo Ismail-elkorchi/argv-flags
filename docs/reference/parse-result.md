@@ -85,6 +85,7 @@ Invalid definitions throw `DefinitionError` with a frozen `issues` array.
 | `INVALID_OPTION_PROPERTY` | A supported property has an invalid value. |
 | `CONFLICTING_OPTION_PROPERTIES` | Valid properties cannot be combined. |
 | `INVALID_FLAG` | A configured flag is malformed. |
+| `DUPLICATE_OPTION` | Composed parsers declare the same logical option more than once. |
 | `DUPLICATE_FLAG` | More than one entry claims a flag spelling. |
 | `INVALID_VALUE_PARSER` | `type` does not implement the `ValueParser` interface. |
 | `INVALID_DEFAULT` | A default violates the selected value contract. |

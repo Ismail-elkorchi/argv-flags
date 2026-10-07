@@ -1,8 +1,10 @@
+import { isLongFlag, isShortFlag } from './flag-grammar.ts';
 import { DefinitionError } from './definition-error.ts';
 import type { DefinitionIssue, RepeatPolicy } from './public-types.ts';
 import { getRuntimeValueParser, value, type RuntimeValueParser } from './value.ts';
 import {
-	assertOwnDataProperties,
+	copyArrayData,
+	copyDataRecord,
 	hasOwn,
 	isPlainRecord,
 	type PlainRecord
@@ -65,8 +67,7 @@ export type FlagBinding =
 
 export interface CompiledDefinitions {
 	readonly options: readonly CompiledOption[];
-	readonly longBindings: Readonly<Record<string, FlagBinding>>;
-	readonly shortBindings: Readonly<Record<string, FlagBinding>>;
+	readonly bindings: Readonly<Record<string, FlagBinding>>;
 	readonly longFlags: readonly string[];
 }
 
@@ -75,8 +76,6 @@ interface RegisteredFlag {
 	readonly property: 'flags' | 'falseFlags';
 }
 
-const SHORT_FLAG_PATTERN = /^-[A-Za-z0-9]$/u;
-const LONG_FLAG_PATTERN = /^--[A-Za-z0-9][A-Za-z0-9_-]*$/u;
 
 const STRING_PARSER = getRuntimeValueParser(value.string());
 const NUMBER_PARSER = getRuntimeValueParser(value.number());
@@ -143,7 +142,7 @@ const validateProperties = (
 };
 
 const isFlagName = (flag: string): boolean =>
-	SHORT_FLAG_PATTERN.test(flag) || LONG_FLAG_PATTERN.test(flag);
+	isShortFlag(flag) || isLongFlag(flag);
 
 const readFlagList = (
 	option: string,
@@ -514,51 +513,49 @@ const compileCountOption = (
 		: undefined;
 };
 
+const claimFlags = (
+	option: string,
+	property: 'flags' | 'falseFlags',
+	candidates: unknown,
+	owners: Map<string, RegisteredFlag>,
+	issues: DefinitionIssue[]
+): void => {
+	if (!Array.isArray(candidates)) return;
+	for (let flagIndex = 0; flagIndex < candidates.length; flagIndex += 1) {
+		const flag: unknown = hasOwn(candidates, flagIndex)
+			? candidates[flagIndex]
+			: undefined;
+		if (typeof flag !== 'string' || !isFlagName(flag)) continue;
+		const existing = owners.get(flag);
+		if (existing === undefined) {
+			owners.set(flag, { option, property });
+			continue;
+		}
+		issues.push({
+			code: 'DUPLICATE_FLAG',
+			message: `Flag "${flag}" for option "${option}" is already assigned to option "${existing.option}".`,
+			option,
+			property,
+			flag,
+			flagIndex,
+			conflictingOption: existing.option,
+			conflictingProperty: existing.property
+		});
+	}
+};
+
 const collectDuplicateFlags = (
 	input: PlainRecord,
 	issues: DefinitionIssue[]
 ): void => {
 	const owners = new Map<string, RegisteredFlag>();
-	for (const optionKey of Reflect.ownKeys(input)) {
-		if (typeof optionKey !== 'string' || optionKey.length === 0) {
-			continue;
-		}
-		const definition = input[optionKey];
-		if (!isPlainRecord(definition)) {
-			continue;
-		}
-		const properties: readonly ('flags' | 'falseFlags')[] =
-			definition['type'] === 'boolean'
-				? ['flags', 'falseFlags']
-				: ['flags'];
-		for (const property of properties) {
-			const candidates = definition[property];
-			if (!Array.isArray(candidates)) {
-				continue;
-			}
-			for (let flagIndex = 0; flagIndex < candidates.length; flagIndex += 1) {
-				const flag: unknown = hasOwn(candidates, flagIndex)
-					? candidates[flagIndex]
-					: undefined;
-				if (typeof flag !== 'string' || !isFlagName(flag)) {
-					continue;
-				}
-				const existing = owners.get(flag);
-				if (existing === undefined) {
-					owners.set(flag, { option: optionKey, property });
-					continue;
-				}
-				issues.push({
-					code: 'DUPLICATE_FLAG',
-					message: `Flag "${flag}" for option "${optionKey}" is already assigned to option "${existing.option}".`,
-					option: optionKey,
-					property,
-					flag,
-					flagIndex,
-					conflictingOption: existing.option,
-					conflictingProperty: existing.property
-				});
-			}
+	for (const option of Reflect.ownKeys(input)) {
+		if (typeof option !== 'string' || option.length === 0) continue;
+		const definition = input[option];
+		if (!isPlainRecord(definition)) continue;
+		claimFlags(option, 'flags', definition['flags'], owners, issues);
+		if (definition['type'] === 'boolean') {
+			claimFlags(option, 'falseFlags', definition['falseFlags'], owners, issues);
 		}
 	}
 };
@@ -566,23 +563,16 @@ const collectDuplicateFlags = (
 const registerFlag = (
 	flag: string,
 	binding: FlagBinding,
-	longBindings: Record<string, FlagBinding>,
-	shortBindings: Record<string, FlagBinding>,
+	bindings: Record<string, FlagBinding>,
 	longFlags: string[]
 ): void => {
-	const frozenBinding = Object.freeze(binding);
-	if (flag.startsWith('--')) {
-		longBindings[flag] = frozenBinding;
-		longFlags.push(flag);
-	} else {
-		shortBindings[flag] = frozenBinding;
-	}
+	bindings[flag] = Object.freeze(binding);
+	if (flag.startsWith('--')) longFlags.push(flag);
 };
 
 const registerOptionFlags = (
 	option: CompiledOption,
-	longBindings: Record<string, FlagBinding>,
-	shortBindings: Record<string, FlagBinding>,
+	bindings: Record<string, FlagBinding>,
 	longFlags: string[]
 ): void => {
 	for (const flag of option.flags) {
@@ -594,8 +584,7 @@ const registerOptionFlags = (
 		registerFlag(
 			flag,
 			binding,
-			longBindings,
-			shortBindings,
+			bindings,
 			longFlags
 		);
 	}
@@ -604,8 +593,7 @@ const registerOptionFlags = (
 			registerFlag(
 				flag,
 				{ kind: 'boolean', option, booleanValue: false },
-				longBindings,
-				shortBindings,
+				bindings,
 				longFlags
 			);
 		}
@@ -613,8 +601,9 @@ const registerOptionFlags = (
 };
 
 /** Validates and compiles definitions into immutable parser data. */
-export const compileDefinitions = (input: unknown): CompiledDefinitions => {
-	if (!isPlainRecord(input)) {
+export const compileDefinitions = (candidate: unknown): CompiledDefinitions => {
+	const inputCandidate = candidate;
+	if (!isPlainRecord(inputCandidate)) {
 		throw new DefinitionError([
 			{
 				code: 'INVALID_DEFINITIONS',
@@ -622,7 +611,23 @@ export const compileDefinitions = (input: unknown): CompiledDefinitions => {
 			}
 		]);
 	}
-	assertOwnDataProperties(input, 'Option definitions');
+	const adopted = copyDataRecord(inputCandidate, 'Option definitions');
+	const definitions = Object.create(null) as PlainRecord;
+	for (const key of Reflect.ownKeys(adopted)) {
+		const definition = adopted[key];
+		if (!isPlainRecord(definition)) {
+			definitions[key] = definition;
+			continue;
+		}
+		const owned = { ...copyDataRecord(definition, `Definition for option "${String(key)}"`) };
+		const arrayProperties = owned['multiple'] === true ? ['flags', 'falseFlags', 'default'] : ['flags', 'falseFlags'];
+		for (const property of arrayProperties) {
+			const array = owned[property];
+			if (Array.isArray(array)) owned[property] = copyArrayData(array, `Option "${String(key)}" ${property}`);
+		}
+		definitions[key] = Object.freeze(owned);
+	}
+	const input = Object.freeze(definitions);
 
 	const issues: DefinitionIssue[] = [];
 	const options: CompiledOption[] = [];
@@ -653,7 +658,6 @@ export const compileDefinitions = (input: unknown): CompiledDefinitions => {
 			});
 			continue;
 		}
-		assertOwnDataProperties(definition, `Definition for option "${option}"`);
 		const issueCount = issues.length;
 		const flags = readFlagList(option, definition, 'flags', true, issues);
 		const type = hasOwn(definition, 'type') ? definition['type'] : undefined;
@@ -684,22 +688,47 @@ export const compileDefinitions = (input: unknown): CompiledDefinitions => {
 		throw new DefinitionError(issues);
 	}
 
-	const longBindings = Object.create(null) as Record<string, FlagBinding>;
-	const shortBindings = Object.create(null) as Record<string, FlagBinding>;
+	return assembleDefinitions(options);
+};
+
+const assembleDefinitions = (options: readonly CompiledOption[]): CompiledDefinitions => {
+	const bindings = Object.create(null) as Record<string, FlagBinding>;
 	const longFlags: string[] = [];
 	for (const option of options) {
 		registerOptionFlags(
 			option,
-			longBindings,
-			shortBindings,
+			bindings,
 			longFlags
 		);
 	}
 
 	return Object.freeze({
-		options: Object.freeze(options),
-		longBindings: Object.freeze(longBindings),
-		shortBindings: Object.freeze(shortBindings),
+		options: Object.freeze([...options]),
+		bindings: Object.freeze(bindings),
 		longFlags: Object.freeze(longFlags)
 	});
+};
+
+/** Unions owned declarations without running their value callbacks again. */
+export const composeDefinitions = (parts: readonly CompiledDefinitions[]): CompiledDefinitions => {
+	const options: CompiledOption[] = [];
+	const names = new Set<string>();
+	const flags = new Map<string, RegisteredFlag>();
+	const issues: DefinitionIssue[] = [];
+	for (const part of parts) {
+		for (const option of part.options) {
+			if (names.has(option.option)) {
+				issues.push({ code: 'DUPLICATE_OPTION', option: option.option,
+					message: `Option "${option.option}" has more than one declaration.` });
+			}
+			names.add(option.option);
+			claimFlags(option.option, 'flags', option.flags, flags, issues);
+			if (option.kind === 'boolean') {
+				claimFlags(option.option, 'falseFlags', option.falseFlags, flags, issues);
+			}
+			options.push(option);
+		}
+	}
+	if (issues.length > 0) throw new DefinitionError(issues);
+	return assembleDefinitions(options);
 };

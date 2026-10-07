@@ -125,8 +125,12 @@ programming errors.
 The resulting object implements the public `ValueParser` interface. Compatible
 physical installations and registry editions can exchange value parsers by
 that shape; identity is not tied to a module-local registry. `parse`, `accepts`,
-and `snapshot` are its public operations. Optional `choices` are unique raw
-argv strings for completion and suggestions. Parsing an advertised choice must
+and `snapshot` are its public operations. `parse()` decodes and validates but
+does not snapshot its output. The option parser snapshots each successful
+explicit value once when adopting it into a parse result; defaults and implicit
+values are snapshotted at declaration adoption and again when used in a result.
+Calling a factory value parser directly follows the same decoding-only contract.
+Optional `choices` are unique raw argv strings for completion and suggestions. Parsing an advertised choice must
 produce a value accepted by `accepts()` and copied successfully by `snapshot()`.
 
 ## Flag and argv grammar
@@ -188,3 +192,45 @@ and unexpected values. It does not decode values, apply defaults, enforce
 required options, or evaluate repetition. This is the integration boundary for
 command routers and other tools that need exact token ownership before the
 final parse.
+
+
+## Scope-aware classification and composition
+
+A router can compile each declaration once, compose effective scopes, and
+advance one owned argv cursor as commands become known:
+
+```ts
+import { composeParsers, createArgvCursor, createParser } from "argv-flags";
+
+const global = createParser({ config: { type: "string", flags: ["--config"] } });
+const build = createParser({ output: { type: "string", flags: ["--output"] } });
+const effective = composeParsers([global, build]);
+const cursor = createArgvCursor({ argv: ["--config", "build", "build", "--output=x"] });
+global.scanNext(cursor); // --config owns the next element, even though it names a command
+global.scanNext(cursor); // ordinary argument "build": the router selects the build scope
+while (!cursor.done) effective.scanNext(cursor);
+const result = effective.decode(cursor);
+```
+
+`createArgvCursor()` accepts the same closed settings as `scan()`. Its `argv`
+is an immutable snapshot; `index` and `done` are read-only traversal state.
+`scanNext()` returns a frozen `ArgvSpan`, containing the normal scan fields plus
+`startIndex` and exclusive `endIndex`. A short cluster belongs to one span;
+a required separate value belongs to its flag's span; `--` includes all remaining
+pass-through arguments. Previously returned spans never change.
+
+`decode()` accepts only a completed owned cursor and an optional closed
+`{ unknownFlagPolicy: "error" | "collect" }` setting. It applies final defaults,
+requiredness, and repetition without rescanning argv. Lexical errors remain
+ordinary failed results. Incomplete, fabricated, exhausted, or incompatible
+traversals produce programming errors. A router must not use a malformed span
+to guess command or control-option ownership.
+
+`composeParsers()` accepts owned parser handles, preserves their declarations,
+and rejects duplicate option names and flags without invoking value callbacks.
+Its result uses the dynamic `OptionDefinitionMap` value type. Independently
+recompiling an equivalent-looking definition creates a different declaration;
+it cannot decode occurrences classified by the original. Compose the original
+handles instead. Cursors and parser composition handles belong to their package
+instance; the structural `ValueParser` interface still interoperates across
+compatible package copies.

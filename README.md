@@ -60,9 +60,9 @@ Definitions and parse settings are closed objects: misspelled or unsupported
 properties fail in TypeScript and at runtime.
 
 Libraries that compose definitions dynamically can type their assembled record
-as `OptionDefinitionMap` and compile it with `createParserFromMap()`. Direct
-callers should prefer `createParser()` because it preserves option-specific
-value inference and rejects extra fields through variables. Composition
+as `OptionDefinitionMap` and compile it with `createParser()`. The same
+constructor preserves option-specific value inference for literal definitions
+and rejects extra fields through variables. Composition
 libraries can extend the exported scalar, multiple, boolean, and count
 definition types with their own presentation metadata instead of reproducing
 the option grammar.
@@ -72,6 +72,11 @@ spans, ordinary arguments, unknown flags, and the exact `--` location without
 decoding values or applying defaults. `parse()` and `scan()` use the same
 grammar implementation. Each occurrence has a `state` discriminant for
 boolean, count, explicit, implicit, missing, or unexpected values.
+
+Routers can use `createArgvCursor()`, `parser.scanNext()`, and
+`parser.decode()` to retain one scope-aware classification through decoding.
+`composeParsers()` combines already-compiled declarations without repeating
+default snapshots. See the [scope-aware API](docs/reference/options.md#scope-aware-classification-and-composition).
 
 `ValueParser` is a public structural interface. A value parser created by a
 compatible second installation, bundle, or npm/JSR copy can be used in a

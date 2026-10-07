@@ -5,12 +5,12 @@ import type {
 	ValueParser
 } from './public-types.ts';
 import {
-	assertOwnDataProperties,
+	copyClosedRecord,
+	copyDataRecord,
 	hasOwn,
-	isDenseStringArray,
+	copyStringArray,
 	isPlainRecord,
 	isPromiseLike,
-	readOwnDataProperty,
 	type PlainRecord
 } from './value-guards.ts';
 
@@ -77,20 +77,7 @@ export interface ValueNamespace {
 	) => ValueParser<Output>;
 }
 
-interface RuntimeValueSuccess {
-	readonly success: true;
-	readonly value: unknown;
-}
-
-interface RuntimeValueFailure {
-	readonly success: false;
-	readonly message: string;
-	readonly reason?: string;
-	readonly details?: Readonly<Record<string, unknown>>;
-	readonly suggestions?: readonly string[];
-}
-
-export type RuntimeValueResult = RuntimeValueSuccess | RuntimeValueFailure;
+export type RuntimeValueResult = ValueParseResult<unknown>;
 
 /** Validated runtime behavior read from a public value parser. */
 export interface RuntimeValueParser {
@@ -103,44 +90,27 @@ export interface RuntimeValueParser {
 	readonly choices?: readonly string[];
 }
 
+const ownedParsers = new WeakMap<object, RuntimeValueParser>();
+
 const createValueParser = <Output>(
 	runtime: RuntimeValueParser
 ): ValueParser<Output> => {
+	const checked = getRuntimeValueParser(runtime);
 	const parser = Object.assign(Object.create(null) as Record<string, unknown>, {
-		parse: runtime.parse,
-		accepts: runtime.accepts,
-		snapshot: runtime.snapshot,
-		...(runtime.choices === undefined
-			? {}
-			: { choices: Object.freeze([...runtime.choices]) })
+		parse: checked.parse,
+		accepts: checked.accepts,
+		snapshot: checked.snapshot,
+		...(checked.choices === undefined ? {} : { choices: checked.choices })
 	});
+	ownedParsers.set(parser, checked);
 	return Object.freeze(parser) as ValueParser<Output>;
-};
-
-const readSettings = (
-	settings: unknown,
-	allowed: readonly string[],
-	label: string
-): PlainRecord => {
-	if (!isPlainRecord(settings)) {
-		throw new TypeError(`${label} settings must be a plain object.`);
-	}
-	assertOwnDataProperties(settings, `${label} settings`);
-	for (const property of Reflect.ownKeys(settings)) {
-		if (typeof property !== 'string' || !allowed.includes(property)) {
-			throw new TypeError(
-				`${label} settings have unsupported property "${String(property)}".`
-			);
-		}
-	}
-	return settings;
 };
 
 const readNumericSettings = (
 	settings: unknown,
 	label: string
 ): { readonly minimum?: number; readonly maximum?: number } => {
-	const record = readSettings(settings, ['minimum', 'maximum'], label);
+	const record = copyClosedRecord(settings, ['minimum', 'maximum'], `${label} settings`);
 	const minimum = hasOwn(record, 'minimum') ? record['minimum'] : undefined;
 	const maximum = hasOwn(record, 'maximum') ? record['maximum'] : undefined;
 	if (
@@ -196,7 +166,7 @@ const stringFactory = <const Settings extends StringValueSettings = StringValueS
 ): ValueParser<string> => {
 	let allowEmpty = false;
 	if (settings !== undefined) {
-		const record = readSettings(settings, ['empty'], 'String value parser');
+		const record = copyClosedRecord(settings, ['empty'], 'String value parser settings');
 		const hasEmpty = hasOwn(record, 'empty');
 		const empty = hasEmpty ? record['empty'] : undefined;
 		if (hasEmpty && empty !== 'allow' && empty !== 'reject') {
@@ -352,10 +322,10 @@ const integerFactory = <const Settings extends NumericValueSettings = NumericVal
 const choiceFactory = <const Values extends readonly [string, ...string[]]>(
 	values: Values
 ): ValueParser<Values[number]> => {
-	if (!isDenseStringArray(values) || values.length === 0) {
+	const choices = copyStringArray(values, 'Choice values');
+	if (choices === undefined || choices.length === 0) {
 		throw new TypeError('Choice values must be a non-empty dense string array.');
 	}
-	const choices = Object.freeze([...values]);
 	if (new Set(choices).size !== choices.length) {
 		throw new TypeError('Choice values must be unique.');
 	}
@@ -385,24 +355,23 @@ const copyDetails = (
 	if (!isPlainRecord(details)) {
 		throw new TypeError('Custom value failure details must be a plain object.');
 	}
-	assertOwnDataProperties(details, 'Custom value failure details');
-	const copy = Object.create(null) as Record<string, unknown>;
-	for (const property of Reflect.ownKeys(details)) {
+	const owned = copyDataRecord(details, 'Custom value failure details');
+	for (const property of Reflect.ownKeys(owned)) {
 		if (typeof property !== 'string') {
 			throw new TypeError('Custom value failure details must use string keys.');
 		}
-		copy[property] = details[property];
 	}
-	return Object.freeze(copy);
+	return owned;
 };
 
 const copySuggestions = (suggestions: unknown): readonly string[] => {
-	if (!isDenseStringArray(suggestions)) {
+	const owned = copyStringArray(suggestions, 'Custom value suggestions');
+	if (owned === undefined) {
 		throw new TypeError('Custom value suggestions must be a dense string array.');
 	}
 	const unique: string[] = [];
 	const seen = new Set<string>();
-	for (const suggestion of suggestions) {
+	for (const suggestion of owned) {
 		if (suggestion.length === 0) {
 			throw new TypeError('Custom value suggestions must not be empty.');
 		}
@@ -420,7 +389,6 @@ const assertResultProperties = (
 	result: PlainRecord,
 	allowed: readonly string[]
 ): void => {
-	assertOwnDataProperties(result, 'Custom value result');
 	for (const property of Reflect.ownKeys(result)) {
 		if (typeof property !== 'string' || !allowed.includes(property)) {
 			throw new TypeError(
@@ -430,7 +398,8 @@ const assertResultProperties = (
 	}
 };
 
-const normalizeValueResult = (candidate: unknown): RuntimeValueResult => {
+const normalizeValueResult = (input: unknown): RuntimeValueResult => {
+	const candidate = isPlainRecord(input) ? copyDataRecord(input, 'Custom value result') : input;
 	if (!isPlainRecord(candidate) || !hasOwn(candidate, 'success')) {
 		throw new TypeError('Value parser returned a malformed result.');
 	}
@@ -456,7 +425,7 @@ const normalizeValueResult = (candidate: unknown): RuntimeValueResult => {
 	if (typeof message !== 'string' || message.length === 0) {
 		throw new TypeError('Value parser failure message must be a non-empty string.');
 	}
-	if (reason !== undefined && (typeof reason !== 'string' || reason.length === 0)) {
+	if (hasOwn(candidate, 'reason') && (typeof reason !== 'string' || reason.length === 0)) {
 		throw new TypeError('Value parser failure reason must be a non-empty string.');
 	}
 	const details = hasOwn(candidate, 'details')
@@ -486,17 +455,19 @@ export function getRuntimeValueParser(
 	candidate: unknown
 ): RuntimeValueParser | undefined {
 	if (candidate === null || typeof candidate !== 'object') return undefined;
+	const owned = ownedParsers.get(candidate);
+	if (owned !== undefined) return owned;
 	const parseCandidate = readStructuralDataProperty(candidate, 'parse');
 	const acceptsCandidate = readStructuralDataProperty(candidate, 'accepts');
 	const snapshotCandidate = readStructuralDataProperty(candidate, 'snapshot');
 	const choicesCandidate = readStructuralDataProperty(candidate, 'choices');
+	const choices = choicesCandidate === undefined ? undefined : copyStringArray(choicesCandidate, 'Value parser choices');
 	if (
 		typeof parseCandidate !== 'function' ||
 		typeof acceptsCandidate !== 'function' ||
 		typeof snapshotCandidate !== 'function' ||
 		(choicesCandidate !== undefined &&
-			(!isDenseStringArray(choicesCandidate) ||
-				new Set(choicesCandidate).size !== choicesCandidate.length))
+			(new Set(choices).size !== choices?.length))
 	) {
 		return undefined;
 	}
@@ -506,18 +477,15 @@ export function getRuntimeValueParser(
 	) => unknown;
 	const check = acceptsCandidate as (value: unknown) => unknown;
 	const copy = snapshotCandidate as (value: unknown) => unknown;
-	const choices = choicesCandidate === undefined
-		? undefined
-		: Object.freeze([...choicesCandidate]);
 	const accepts = (value: unknown): boolean => {
-		const accepted: unknown = check(value);
+		const accepted: unknown = check.call(candidate, value);
 		if (typeof accepted !== 'boolean') {
 			throw new TypeError('Value parser accepts callback must return a boolean.');
 		}
 		return accepted;
 	};
 	const snapshot = (value: unknown): unknown => {
-		const captured: unknown = copy(value);
+		const captured: unknown = copy.call(candidate, value);
 		if (isPromiseLike(captured)) {
 			throw new TypeError('Value parser snapshot must be synchronous.');
 		}
@@ -528,7 +496,7 @@ export function getRuntimeValueParser(
 	};
 	return Object.freeze({
 		parse(raw: string, context: ValueParseContext): RuntimeValueResult {
-			const result: unknown = parse(raw, context);
+			const result: unknown = parse.call(candidate, raw, context);
 			if (isPromiseLike(result)) {
 				throw new TypeError('Value parser parse callback must be synchronous.');
 			}
@@ -542,7 +510,7 @@ export function getRuntimeValueParser(
 			if (!accepts(normalized.value)) {
 				throw new TypeError('Value parser returned an unacceptable value.');
 			}
-			return { success: true, value: snapshot(normalized.value) };
+			return normalized;
 		},
 		accepts,
 		snapshot,
@@ -581,29 +549,16 @@ const customFactory = <
 			never
 		>
 ): ValueParser<Output> => {
-	if (!isPlainRecord(callbacks)) {
-		throw new TypeError('Custom value parser callbacks must be a plain object.');
-	}
-	assertOwnDataProperties(callbacks, 'Custom value parser callbacks');
-	for (const property of Reflect.ownKeys(callbacks)) {
-		if (
-			typeof property !== 'string' ||
-			(property !== 'parse' && property !== 'accepts' && property !== 'snapshot')
-		) {
-			throw new TypeError(
-				`Custom value parser callbacks have unsupported property "${String(property)}".`
-			);
-		}
-	}
-	const parseCandidate = readOwnDataProperty(callbacks, 'parse');
-	const acceptsCandidate = readOwnDataProperty(callbacks, 'accepts');
-	const snapshotCallback: unknown = hasOwn(callbacks, 'snapshot')
-		? readOwnDataProperty(callbacks, 'snapshot')
+	const owned = copyClosedRecord(callbacks, ['parse', 'accepts', 'snapshot'], 'Custom value parser callbacks');
+	const parseCandidate = owned['parse'];
+	const acceptsCandidate = owned['accepts'];
+	const snapshotCallback: unknown = hasOwn(owned, 'snapshot')
+		? owned['snapshot']
 		: undefined;
 	if (typeof parseCandidate !== 'function' || typeof acceptsCandidate !== 'function') {
 		throw new TypeError('Custom value parser requires parse and accepts callbacks.');
 	}
-	if (hasOwn(callbacks, 'snapshot') && typeof snapshotCallback !== 'function') {
+	if (hasOwn(owned, 'snapshot') && typeof snapshotCallback !== 'function') {
 		throw new TypeError('Custom value parser snapshot must be a function.');
 	}
 	const parseCallback = parseCandidate as (
@@ -615,80 +570,12 @@ const customFactory = <
 		| ((value: unknown) => unknown)
 		| undefined;
 
-	const accepts = (candidate: unknown): boolean => {
-		const accepted: unknown = acceptsCallback(candidate);
-		if (typeof accepted !== 'boolean') {
-			throw new TypeError('Custom value parser accepts callback must return a boolean.');
-		}
-		return accepted;
-	};
-
-	const snapshot = (candidate: unknown): unknown => {
-		const captured = callSnapshot === undefined
-			? candidate
-			: callSnapshot(candidate);
-		if (isPromiseLike(captured)) {
-			throw new TypeError('Custom value parser snapshot must be synchronous.');
-		}
-		if (!accepts(captured)) {
-			throw new TypeError('Custom value parser snapshot returned an unacceptable value.');
-		}
-		return captured;
-	};
-
 	return createValueParser<Output>({
-		parse(raw, context) {
-			const callbackResult: unknown = parseCallback(raw, context);
-			if (isPromiseLike(callbackResult)) {
-				throw new TypeError('Custom value parser parse callback must be synchronous.');
-			}
-			if (!isPlainRecord(callbackResult) || !hasOwn(callbackResult, 'success')) {
-				throw new TypeError('Custom value parser returned a malformed result.');
-			}
-			if (callbackResult['success'] === true) {
-				assertResultProperties(callbackResult, ['success', 'value']);
-				if (!hasOwn(callbackResult, 'value') || !accepts(callbackResult['value'])) {
-					throw new TypeError('Custom value parser returned an unacceptable value.');
-				}
-				return { success: true, value: callbackResult['value'] };
-			}
-			if (callbackResult['success'] !== false) {
-				throw new TypeError('Custom value parser result success must be boolean.');
-			}
-			assertResultProperties(callbackResult, [
-				'success',
-				'message',
-				'reason',
-				'details',
-				'suggestions'
-			]);
-			const message = callbackResult['message'];
-			const hasReason = hasOwn(callbackResult, 'reason');
-			const reason = hasReason
-				? callbackResult['reason']
-				: undefined;
-			if (typeof message !== 'string' || message.length === 0) {
-				throw new TypeError('Custom value failure message must be a non-empty string.');
-			}
-			if (hasReason && (typeof reason !== 'string' || reason.length === 0)) {
-				throw new TypeError('Custom value failure reason must be a non-empty string.');
-			}
-			const details = hasOwn(callbackResult, 'details')
-				? copyDetails(callbackResult['details'])
-				: undefined;
-			const suggestions = hasOwn(callbackResult, 'suggestions')
-				? copySuggestions(callbackResult['suggestions'])
-				: undefined;
-			return {
-				success: false,
-				message,
-				...(typeof reason === 'string' ? { reason } : {}),
-				...(details === undefined ? {} : { details }),
-				...(suggestions === undefined ? {} : { suggestions })
-			};
-		},
-		accepts,
-		snapshot
+		parse: (raw, context) => parseCallback.call(callbacks, raw, context) as RuntimeValueResult,
+		accepts: (candidate) => acceptsCallback.call(callbacks, candidate) as boolean,
+		snapshot: (candidate) => callSnapshot === undefined
+			? candidate
+			: callSnapshot.call(callbacks, candidate)
 	});
 };
 

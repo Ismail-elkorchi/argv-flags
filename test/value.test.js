@@ -236,6 +236,80 @@ test('value parsers interoperate across independent module instances', async () 
 		const result = parser.parse({ argv: ['--region=eu'] });
 		assert.strictEqual(result.success, true);
 		assert.strictEqual(result.values.region, 'eu');
+		assert.notStrictEqual(first.value, second.value);
+		for (const makeType of [
+			(callbacks) => callbacks,
+			(callbacks) => first.value.custom(callbacks),
+			(callbacks) => second.value.custom(callbacks)
+		]) {
+			let snapshots = 0;
+			let decoded;
+			const callbacks = {
+				parse(raw) {
+					assert.strictEqual(this, callbacks);
+					if (raw === 'bad') return { success: false, message: 'Rejected.', reason: 'BAD' };
+					decoded = { text: raw };
+					return { success: true, value: decoded };
+				},
+				accepts(candidate) {
+					assert.strictEqual(this, callbacks);
+					return typeof candidate?.text === 'string';
+				},
+				snapshot(candidate) {
+					assert.strictEqual(this, callbacks);
+					snapshots += 1;
+					return { text: candidate.text + '!' };
+				}
+			};
+			const type = makeType(callbacks);
+			assert.deepStrictEqual(type.parse('direct', {}), { success: true, value: { text: 'direct' } });
+			assert.equal(snapshots, 0);
+			const consumer = second.createParser({
+				scalar: { type, flags: ['--scalar'] },
+				many: { type, flags: ['--many'], multiple: true }
+			});
+			const explicit = consumer.parse({ argv: ['--scalar=a', '--many=b', '--many=c'] });
+			assert.equal(explicit.success, true);
+			assert.deepStrictEqual(explicit.values.scalar, { text: 'a!' });
+			assert.deepStrictEqual(explicit.values.many, [{ text: 'b!' }, { text: 'c!' }]);
+			assert.equal(snapshots, 3);
+			assert.notStrictEqual(explicit.values.many[1], decoded);
+			const rejected = consumer.parse({ argv: ['--scalar=bad'] });
+			assert.equal(rejected.success, false);
+			assert.equal(rejected.issues[0].reason, 'BAD');
+			assert.equal(snapshots, 3);
+			const fallback = second.createParser({
+				scalar: { type, flags: ['--scalar'], default: { text: 'default' } },
+				many: { type, flags: ['--many'], multiple: true, default: [{ text: 'many' }] },
+				implicit: { type, flags: ['--implicit'], valueMode: 'optional-inline', implicitValue: { text: 'implicit' } }
+			});
+			assert.equal(snapshots, 6);
+			for (let count = 1; count <= 2; count += 1) {
+				const defaults = fallback.parse({ argv: ['--implicit'] });
+				assert.equal(defaults.success, true);
+				assert.deepStrictEqual(defaults.values.scalar, { text: 'default!!' });
+				assert.deepStrictEqual(defaults.values.many, [{ text: 'many!!' }]);
+				assert.deepStrictEqual(defaults.values.implicit, { text: 'implicit!!' });
+				assert.equal(snapshots, 6 + count * 3);
+			}
+			for (const [parse, snapshot, message, expectedSnapshots] of [
+				[() => ({ success: true, value: 1 }), (input) => input, /unacceptable value/u, 0],
+				[() => ({ success: true }), (input) => input, /must contain a value/u, 0],
+				[() => Promise.resolve({ success: true, value: 'x' }), (input) => input, /must be synchronous/u, 0],
+				[() => ({ success: true, value: 'x' }), () => 1, /snapshot returned an unacceptable value/u, 1],
+				[() => ({ success: true, value: 'x' }), () => Promise.resolve('x'), /snapshot must be synchronous/u, 1]
+			]) {
+				let failedSnapshots = 0;
+				const invalid = makeType({
+					parse,
+					accepts: (candidate) => typeof candidate === 'string',
+					snapshot(input) { failedSnapshots += 1; return snapshot(input); }
+				});
+				const invalidConsumer = second.createParser({ item: { type: invalid, flags: ['--item'] } });
+				assert.throws(() => invalidConsumer.parse({ argv: ['--item=x'] }), message);
+				assert.equal(failedSnapshots, expectedSnapshots);
+			}
+		}
 	} finally {
 		await rm(root, { recursive: true, force: true });
 	}

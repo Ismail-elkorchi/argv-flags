@@ -1,4 +1,4 @@
-import { isDenseStringArray } from './value-guards.ts';
+import { copyStringArray } from './value-guards.ts';
 
 const readStringArrayProperty = (
 	value: unknown,
@@ -8,19 +8,19 @@ const readStringArrayProperty = (
 		return undefined;
 	}
 	const propertyValue = (value as Record<string, unknown>)[property];
-	return isDenseStringArray(propertyValue) ? propertyValue : undefined;
+	return copyStringArray(propertyValue, 'Runtime argv');
 };
 
 /** Resolves argv without importing a runtime-specific module. */
-export const resolveRuntimeArgv = (): string[] => {
+export const resolveRuntimeArgv = (): readonly string[] => {
 	const runtimeGlobals = globalThis as typeof globalThis & {
 		process?: unknown;
 		Deno?: unknown;
 	};
 	const processArgv = readStringArrayProperty(runtimeGlobals.process, 'argv');
 	if (processArgv !== undefined) {
-		return processArgv.slice(2);
+		return Object.freeze(processArgv.slice(2));
 	}
 	const denoArgv = readStringArrayProperty(runtimeGlobals.Deno, 'args');
-	return denoArgv === undefined ? [] : [...denoArgv];
+	return denoArgv ?? Object.freeze([]);
 };

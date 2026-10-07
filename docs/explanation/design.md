@@ -6,16 +6,15 @@
 object. It deliberately leaves commands, help rendering, process exits,
 configuration discovery, and prompts to the application.
 
-The public runtime facade has four exports: `createParser`,
-`createParserFromMap`, `DefinitionError`, and `value`. `createParser()`
+The public runtime facade exports `createParser`,
+`composeParsers`, `createArgvCursor`, `DefinitionError`, and `value`. `createParser()`
 validates and snapshots literal definitions once, builds prototype-safe flag
 lookups, and returns a frozen reusable parser. Parsing has no live dependency
 on the caller's definition objects.
 
-`createParserFromMap()` serves integration libraries that assemble definition
-maps dynamically. It accepts the closed `OptionDefinitionMap` union while
-leaving the stronger per-property inference of literal definitions to
-`createParser()`.
+`createParser()` also accepts dynamically assembled `OptionDefinitionMap`
+inputs. Literal definitions retain their stronger per-property inference
+through the same constructor.
 
 ## Vocabulary
 
@@ -40,9 +39,23 @@ Recognition, conversion, repetition, and final materialization are distinct.
 That separation lets failed results retain exact source locations without
 exposing partial values or successful-looking defaults.
 
+A scope-aware router owns one `ArgvCursor`. Each `scanNext()` advances one
+complete span under the current parser; the router can change parser scopes
+only between spans. `decode()` consumes the completed retained classification,
+not a second scan. Standalone `scan()` and `parse()` drive these same operations.
+An incomplete or fabricated cursor is a programming error.
+
+`composeParsers()` unions declarations from owned parser handles. It retains
+compiled declaration identities and snapshots instead of compiling defaults
+again. Duplicate option names and flag spellings are rejected. Decoding permits
+scope changes only when the final composition contains the exact declarations
+that classified every recognized occurrence.
+
 ## Ownership and runtime independence
 
-Package-owned result containers are fresh and shallow-frozen. Custom parsers
+Records and arrays are adopted from own data properties without invoking caller
+accessors or array iterators. Package-owned result containers are fresh and
+shallow-frozen. Custom parsers
 define snapshot behavior for their own mutable values. The default entrypoint
 imports no runtime-specific module: argv is read from `globalThis` only when
 `parse()` is called, and explicit `argv` always wins.

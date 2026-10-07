@@ -3,7 +3,6 @@ import { test } from 'node:test';
 import {
 	DefinitionError,
 	createParser,
-	createParserFromMap,
 	value
 } from '../dist/index.js';
 
@@ -48,7 +47,7 @@ test('dynamically composed maps use the same definition compiler', () => {
 		['source', { type: 'string', flags: ['--source'], required: true }],
 		['verbose', { type: 'boolean', flags: ['--verbose'] }]
 	]);
-	const result = createParserFromMap(definitions).parse({
+	const result = createParser(definitions).parse({
 		argv: ['--source', 'input.txt', '--verbose']
 	});
 	assert.equal(result.success, true);
